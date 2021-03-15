@@ -1,8 +1,8 @@
 package usbUtils
 
 import (
-	"io"
 	"log"
+	"time"
 
 	"github.com/google/gousb"
 )
@@ -15,8 +15,6 @@ const (
 )
 
 type USBInterface struct {
-	io.Reader
-	io.Writer
 }
 
 func (u *USBInterface) GetDescription() (string, error) {
@@ -58,6 +56,7 @@ func (u *USBInterface) GetSerialNumber() (string, error) {
 }
 
 func (u *USBInterface) Read(p []byte) (int, error) {
+
 	// Initialize a new Context.
 	ctx := gousb.NewContext()
 	defer ctx.Close()
@@ -84,13 +83,20 @@ func (u *USBInterface) Read(p []byte) (int, error) {
 		log.Fatalf("%s.OutEndpoint(%v): %v", intf, WriteEndpoint, err)
 	}
 
-	// Set packet length
-	ep.Desc.MaxPacketSize = BlockSize
+	// Set transfer as bulk
+	//ep.Desc.MaxPacketSize = BlockSize
+	ep.Desc.TransferType = gousb.TransferTypeBulk
+	ep.Desc.IsoSyncType = gousb.IsoSyncTypeSync
+	ep.Desc.PollInterval = 0 * time.Millisecond
 
 	// Read data from the USB device.
 	numBytes, err := ep.Read(p)
+	if err != nil {
+		return 0, err
+	}
+
 	if numBytes != len(p) {
-		log.Fatalf("%s.Read([%v]): only %d bytes written, returned error is %v", ep, numBytes, numBytes, err)
+		log.Fatalf("%s.Read([%v]): only %d bytes read, returned error is %v", ep, numBytes, numBytes, err)
 	}
 
 	return numBytes, nil
@@ -122,6 +128,12 @@ func (u *USBInterface) Write(p []byte) (int, error) {
 	if err != nil {
 		log.Fatalf("%s.OutEndpoint(%v): %v", intf, WriteEndpoint, err)
 	}
+
+	// Set transfer as bulk
+	//ep.Desc.MaxPacketSize = BlockSize
+	ep.Desc.TransferType = gousb.TransferTypeBulk
+	ep.Desc.IsoSyncType = gousb.IsoSyncTypeSync
+	ep.Desc.PollInterval = 0 * time.Millisecond
 
 	// Write data to the USB device.
 	numBytes, err := ep.Write(p)

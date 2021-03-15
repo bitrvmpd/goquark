@@ -1,0 +1,42 @@
+package cfg
+
+import (
+	"fmt"
+	"log"
+
+	"github.com/fsnotify/fsnotify"
+	"github.com/spf13/viper"
+)
+
+const ConfigPath = "goquark"
+
+func init() {
+	viper.SetConfigName(ConfigPath) // name of config file (without extension
+	viper.SetConfigType("yaml")
+	viper.AddConfigPath(".") // optionally look for config in the working directory
+
+	// Find and read the config file
+	if err := viper.ReadInConfig(); err != nil {
+		// Handle errors reading the config file
+		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+			// Config file not found; ignore error if desired
+			err = viper.SafeWriteConfig() // writes current config to predefined path set by 'viper.AddConfigPath()' and 'viper.SetConfigName'
+			if err != nil {
+				log.Fatalf("Couldn't write config file: %v \n", err)
+			}
+		} else {
+			// Config file was found but another error was produced
+			log.Fatalf("Fatal error config file: %s \n", err)
+
+		}
+	}
+
+	viper.WatchConfig()
+	viper.OnConfigChange(func(e fsnotify.Event) {
+		fmt.Println("Config file changed:", e.Name)
+	})
+}
+
+func Size() uint32 {
+	return uint32(len(viper.AllKeys()))
+}
