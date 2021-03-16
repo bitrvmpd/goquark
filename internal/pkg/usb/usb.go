@@ -17,10 +17,11 @@ const (
 )
 
 type USBInterface struct {
+	ctx context.Context
 }
 
 // Waits for a device to be connected that matches VID: 0x057E PID: 0x3000
-func (u *USBInterface) IsConnected(ctx context.Context) chan bool {
+func (u *USBInterface) isConnected() chan bool {
 	// Set ticker to search for the required device
 	ticker := time.NewTicker(500 * time.Millisecond)
 	c := make(chan bool)
@@ -32,8 +33,8 @@ func (u *USBInterface) IsConnected(ctx context.Context) chan bool {
 		defer gctx.Close()
 
 		for range ticker.C {
-			if ctx.Err() != nil {
-				fmt.Println("Closing is connected...")
+			if u.ctx.Err() != nil {
+				fmt.Println("Stopping func: isConnected...")
 				c <- false
 				return
 			}
@@ -126,6 +127,19 @@ func (u *USBInterface) Read(p []byte) (int, error) {
 	ep.Desc.IsoSyncType = gousb.IsoSyncTypeSync
 	ep.Desc.PollInterval = 0 * time.Millisecond
 
+	// Just before reading, prepare a way to cancel this request
+	go func() {
+		for {
+			if u.ctx.Err() != nil {
+				done()
+				dev.Close()
+				ctx.Close()
+				break
+			}
+			// TODO: Improve by using channels
+			time.Sleep(1 * time.Millisecond)
+		}
+	}()
 	// Read data from the USB device.
 	numBytes, err := ep.Read(p)
 	if err != nil {
@@ -172,6 +186,19 @@ func (u *USBInterface) Write(p []byte) (int, error) {
 	ep.Desc.IsoSyncType = gousb.IsoSyncTypeSync
 	ep.Desc.PollInterval = 0 * time.Millisecond
 
+	// Just before writting, prepare a way to cancel this request
+	go func() {
+		for {
+			if u.ctx.Err() != nil {
+				done()
+				dev.Close()
+				ctx.Close()
+				break
+			}
+			// TODO: Improve by using channels
+			time.Sleep(1 * time.Millisecond)
+		}
+	}()
 	// Write data to the USB device.
 	numBytes, err := ep.Write(p)
 	if numBytes != len(p) {

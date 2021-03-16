@@ -41,24 +41,49 @@ const (
 )
 
 type command struct {
+	cmdMap map[ID]func()
 	*buffer
 }
 
-func New() (*command, error) {
+func New(ctx context.Context) (*command, error) {
 	c := command{
 		buffer: &buffer{
-			usbBuffer:   &USBInterface{},
+			usbBuffer: &USBInterface{
+				ctx: ctx,
+			},
 			inner_block: make([]byte, BlockSize),
 			resp_block:  make([]byte, 0, BlockSize)},
+	}
+
+	// Map cmd ID to respective function
+	c.cmdMap = map[ID]func(){
+		Invalid:             func() { log.Printf("usbUtils.Invalid:") },
+		GetDriveCount:       c.SendDriveCount,
+		GetDriveInfo:        c.SendDriveInfo,
+		StatPath:            func() { log.Printf("usbUtils.StatPath:") },
+		GetFileCount:        func() { log.Printf("usbUtils.GetFileCount:") },
+		GetFile:             func() { log.Printf("usbUtils.GetFile:") },
+		GetDirectoryCount:   c.SendDirectoryCount,
+		GetDirectory:        func() { log.Printf("usbUtils.GetDirectory:") },
+		StartFile:           func() { log.Printf("usbUtils.StartFile:") },
+		ReadFile:            func() { log.Printf("usbUtils.ReadFile:") },
+		WriteFile:           func() { log.Printf("usbUtils.WriteFile:") },
+		EndFile:             func() { log.Printf("usbUtils.EndFile:") },
+		Create:              func() { log.Printf("usbUtils.Create:") },
+		Delete:              func() { log.Printf("usbUtils.Delete:") },
+		Rename:              func() { log.Printf("usbUtils.Rename:") },
+		GetSpecialPathCount: c.SendSpecialPathCount,
+		GetSpecialPath:      func() { log.Printf("usbUtils.SendSpecialPath:") },
+		SelectFile:          c.SendSelectFile,
 	}
 
 	return &c, nil
 }
 
-func (c *command) ProcessUSBPackets(ctx context.Context) {
+func (c *command) ProcessUSBPackets() {
 
 	// Check if device is connected.
-	b := c.usbBuffer.IsConnected(ctx)
+	b := c.usbBuffer.isConnected()
 
 	// If false, returns
 	if !<-b {
@@ -95,12 +120,6 @@ goQuark is ready for connections...
 `, d, s)
 
 	for {
-		// Check if context was closed
-		if ctx.Err() != nil {
-			fmt.Println("Stop processing packets...")
-			return
-		}
-
 		// Magic [:4]
 		i, err := c.readInt32()
 		if err != nil {
@@ -117,51 +136,8 @@ goQuark is ready for connections...
 			log.Fatalln(err)
 		}
 
-		switch cmd {
-		case Invalid:
-			log.Printf("usbUtils.Invalid:")
-		case GetDriveCount:
-			log.Printf("usbUtils.SendDriveCount:")
-			c.SendDriveCount()
-		case GetDriveInfo:
-			log.Printf("usbUtils.SendDriveInfo:")
-			c.SendDriveInfo()
-		case StatPath:
-			log.Printf("usbUtils.StatPath:")
-		case GetFileCount:
-			log.Printf("usbUtils.GetFileCount:")
-		case GetFile:
-			log.Printf("usbUtils.GetFile:")
-		case GetDirectoryCount:
-			log.Printf("usbUtils.GetDirectoryCount:")
-			c.SendDirectoryCount()
-		case GetDirectory:
-			log.Printf("usbUtils.GetDirectory:")
-		case StartFile:
-			log.Printf("usbUtils.StartFile:")
-		case ReadFile:
-			log.Printf("usbUtils.ReadFile:")
-		case WriteFile:
-			log.Printf("usbUtils.WriteFile:")
-		case EndFile:
-			log.Printf("usbUtils.EndFile:")
-		case Create:
-			log.Printf("usbUtils.Create:")
-		case Delete:
-			log.Printf("usbUtils.Delete:")
-		case Rename:
-			log.Printf("usbUtils.Rename:")
-		case GetSpecialPathCount:
-			log.Printf("usbUtils.SendSpecialPathCount:")
-			c.SendSpecialPathCount()
-		case GetSpecialPath:
-			log.Printf("usbUtils.SendSpecialPath:")
-		case SelectFile:
-			log.Printf("usbUtils.SendSelectFile:")
-			c.SendSelectFile()
-		default:
-			log.Printf("usbUtils.default:")
-		}
+		// Invoke requested function
+		c.cmdMap[cmd]()
 	}
 }
 

@@ -40,3 +40,14 @@ func init() {
 func Size() uint32 {
 	return uint32(len(viper.AllKeys()))
 }
+
+func AddFolder(name string, path string) {
+	viper.Set(name, path)
+}
+
+func RemoveFolder(name string) {
+	if !viper.IsSet(name) {
+		log.Println("value is not here..")
+	}
+	viper.Set(name, nil)
+}
