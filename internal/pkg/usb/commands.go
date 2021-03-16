@@ -1,12 +1,11 @@
-package usbUtils
+package usb
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"log"
-
-	"golang.org/x/text/encoding/unicode"
-	"golang.org/x/text/transform"
 
 	"github.com/bitrvmpd/goquark/internal/pkg/cfg"
 	fsUtil "github.com/bitrvmpd/goquark/internal/pkg/fs"
@@ -42,21 +41,131 @@ const (
 )
 
 type command struct {
-	inner_block []byte
-	resp_block  []byte
-	usbBuffer   *USBInterface
+	*buffer
 }
 
-func NewCommand() *command {
+func New() (*command, error) {
 	c := command{
-		usbBuffer:   &USBInterface{},
-		inner_block: make([]byte, BlockSize),
-		resp_block:  make([]byte, 0, BlockSize),
+		buffer: &buffer{
+			usbBuffer:   &USBInterface{},
+			inner_block: make([]byte, BlockSize),
+			resp_block:  make([]byte, 0, BlockSize)},
 	}
-	return &c
+
+	return &c, nil
 }
 
-func (c *command) ReadCMD() (ID, error) {
+func (c *command) ProcessUSBPackets(ctx context.Context) {
+
+	// Check if device is connected.
+	b := c.usbBuffer.IsConnected(ctx)
+
+	// If false, returns
+	if !<-b {
+		return
+	}
+
+	//quarkVersion := "0.4.0"
+	//minGoldleafVersion := "0.8.0"
+
+	// Reads goldleaf description
+	d, err := c.retrieveDesc()
+	if err != nil {
+		log.Fatalf("ERROR: %v", err)
+	}
+
+	// Reads goldleaf's version number
+	s, err := c.retrieveSerialNumber()
+	if err != nil {
+		log.Fatalf("ERROR: %v", err)
+	}
+
+	fmt.Printf(
+		`
+###################################
+######## < < Q U A R K > > ########
+###################################
+
+goQuark is ready for connections...
+
++-----------------------------------+
+|	Client:		%v    |
+|	Version:	%v       |
++-----------------------------------+
+`, d, s)
+
+	for {
+		// Check if context was closed
+		if ctx.Err() != nil {
+			fmt.Println("Stop processing packets...")
+			return
+		}
+
+		// Magic [:4]
+		i, err := c.readInt32()
+		if err != nil {
+			log.Fatalf("ERROR: %v", err)
+		}
+
+		if i != GLCI {
+			log.Fatalf("ERROR: Invalid magic GLCI, got %v", i)
+		}
+
+		// CMD [4:]
+		cmd, err := c.readCMD()
+		if err != nil {
+			log.Fatalln(err)
+		}
+
+		switch cmd {
+		case Invalid:
+			log.Printf("usbUtils.Invalid:")
+		case GetDriveCount:
+			log.Printf("usbUtils.SendDriveCount:")
+			c.SendDriveCount()
+		case GetDriveInfo:
+			log.Printf("usbUtils.SendDriveInfo:")
+			c.SendDriveInfo()
+		case StatPath:
+			log.Printf("usbUtils.StatPath:")
+		case GetFileCount:
+			log.Printf("usbUtils.GetFileCount:")
+		case GetFile:
+			log.Printf("usbUtils.GetFile:")
+		case GetDirectoryCount:
+			log.Printf("usbUtils.GetDirectoryCount:")
+			c.SendDirectoryCount()
+		case GetDirectory:
+			log.Printf("usbUtils.GetDirectory:")
+		case StartFile:
+			log.Printf("usbUtils.StartFile:")
+		case ReadFile:
+			log.Printf("usbUtils.ReadFile:")
+		case WriteFile:
+			log.Printf("usbUtils.WriteFile:")
+		case EndFile:
+			log.Printf("usbUtils.EndFile:")
+		case Create:
+			log.Printf("usbUtils.Create:")
+		case Delete:
+			log.Printf("usbUtils.Delete:")
+		case Rename:
+			log.Printf("usbUtils.Rename:")
+		case GetSpecialPathCount:
+			log.Printf("usbUtils.SendSpecialPathCount:")
+			c.SendSpecialPathCount()
+		case GetSpecialPath:
+			log.Printf("usbUtils.SendSpecialPath:")
+		case SelectFile:
+			log.Printf("usbUtils.SendSelectFile:")
+			c.SendSelectFile()
+		default:
+			log.Printf("usbUtils.default:")
+		}
+	}
+}
+
+func (c *command) readCMD() (ID, error) {
 	if c.inner_block == nil {
 		return Invalid, errors.New("ERROR: inner_block is not initialized")
 	}
@@ -64,7 +173,7 @@ func (c *command) ReadCMD() (ID, error) {
 	return ID(binary.LittleEndian.Uint32(c.inner_block[4:])), nil
 }
 
-func (c *command) RetrieveDesc() (string, error) {
+func (c *command) retrieveDesc() (string, error) {
 	s, err := c.usbBuffer.GetDescription()
 	if err != nil {
 		return "", err
@@ -72,112 +181,12 @@ func (c *command) RetrieveDesc() (string, error) {
 	return s, nil
 }
 
-func (c *command) RetrieveSerialNumber() (string, error) {
+func (c *command) retrieveSerialNumber() (string, error) {
 	s, err := c.usbBuffer.GetSerialNumber()
 	if err != nil {
 		return "", err
 	}
 	return s, nil
-}
-
-func (c *command) ResponseStart() {
-	// Empty our out buffer
-	c.resp_block = make([]byte, 0, BlockSize)
-
-	//Fast convertion to uint32
-	d := make([]byte, BlockSize)
-	binary.LittleEndian.PutUint32(d, GLCO)
-
-	//Append to our magic and 0 delimiter
-	c.resp_block = append(c.resp_block, d[:4]...)
-	c.resp_block = append(c.resp_block, 0)
-}
-
-func (c *command) ResponseEnd() {
-	// Fill with 0 up to 4096 bytes
-	d := make([]byte, BlockSize-len(c.resp_block))
-	c.resp_block = append(c.resp_block, d...)
-
-	log.Println("SENDING: ", len(c.resp_block), "bytes...")
-
-	// Write the buffer
-	_, err := c.usbBuffer.Write(c.resp_block)
-	if err != nil {
-		log.Fatalf("ERROR: %v", err)
-	}
-}
-
-func (c *command) RespondFailure(r uint32) {
-	// Empty our out buffer
-	c.resp_block = make([]byte, 0, BlockSize)
-
-	// Append magic
-	d := make([]byte, 0, BlockSize)
-	binary.LittleEndian.PutUint32(d, GLCO)
-	c.resp_block = append(c.resp_block, d[:4]...)
-
-	// Append error
-	b := make([]byte, 0, BlockSize)
-	binary.LittleEndian.PutUint32(b, r)
-	c.resp_block = append(c.resp_block, b[:4]...)
-
-	c.ResponseEnd()
-}
-
-func (c *command) RespondEmpty() {
-	c.ResponseStart()
-	c.ResponseEnd()
-}
-
-func (c *command) ReadInt32() (int, error) {
-	c.inner_block = make([]byte, BlockSize)
-	_, err := c.usbBuffer.Read(c.inner_block)
-	if err != nil {
-		return 0, err
-	}
-	i := binary.LittleEndian.Uint32(c.inner_block[:4])
-	return int(i), nil
-}
-
-func (c *command) WriteInt32(n uint32) {
-	b := make([]byte, BlockSize-len(c.resp_block))
-	binary.LittleEndian.PutUint32(b, n)
-	c.resp_block = append(c.resp_block[:5], b...)
-}
-
-func (c *command) ReadString() (string, error) {
-	c.inner_block = make([]byte, BlockSize)
-	_, err := c.usbBuffer.Read(c.inner_block)
-	if err != nil {
-		return "", err
-	}
-
-	// Prepare decoder
-	enc := unicode.UTF16(unicode.LittleEndian, unicode.IgnoreBOM).NewDecoder()
-	t := transform.NewReader(c.usbBuffer, enc)
-	// Parse bytes to utf8
-	_, err = t.Read(c.inner_block)
-	if err != nil {
-		return "", err
-	}
-
-	s := string(c.inner_block)
-	return s, nil
-}
-
-func (c *command) WriteString(v string) {
-	d := []byte(v)
-	o := make([]byte, BlockSize-len(c.resp_block))
-
-	// Prepare encoder
-	enc := unicode.UTF16(unicode.LittleEndian, unicode.IgnoreBOM).NewEncoder()
-	_, _, err := enc.Transform(o, d, true)
-
-	if err != nil {
-		log.Fatalf("ERROR: Can't write string: %v", err)
-	}
-
-	c.resp_block = append(c.resp_block[:5], o...)
 }
 
 func (c *command) SendDriveCount() {
@@ -186,9 +195,9 @@ func (c *command) SendDriveCount() {
 		log.Fatalf("ERROR: %v", err)
 	}
 
-	c.ResponseStart()
-	c.WriteInt32(uint32(len(drives)))
-	c.ResponseEnd()
+	c.responseStart()
+	c.writeInt32(uint32(len(drives)))
+	c.responseEnd()
 }
 
 func (c *command) SendDriveInfo() {
@@ -197,7 +206,7 @@ func (c *command) SendDriveInfo() {
 		log.Fatalf("ERROR: %v", err)
 	}
 
-	_, err = c.ReadInt32() // It's in inner_block
+	_, err = c.readInt32() // It's in inner_block
 	if err != nil {
 		log.Fatalf("ERROR: %v", err)
 	}
@@ -205,7 +214,7 @@ func (c *command) SendDriveInfo() {
 	idx := binary.LittleEndian.Uint32(c.inner_block[:4])
 
 	if int(idx) > len(drives) || int(idx) <= -1 {
-		c.RespondFailure(0xDEAD)
+		c.respondFailure(0xDEAD)
 		log.Fatalf("ERROR: Invalid disk index %v", idx)
 	}
 
@@ -215,22 +224,22 @@ func (c *command) SendDriveInfo() {
 		log.Fatalf("ERROR: Can't get drive label for %v", drive)
 	}
 
-	c.ResponseStart()
-	c.WriteString(label)
-	c.WriteString(drive)
-	c.WriteInt32(0) // It's in inner_block
-	c.WriteInt32(0) // It's in inner_block
-	c.ResponseEnd()
+	c.responseStart()
+	c.writeString(label)
+	c.writeString(drive)
+	c.writeInt32(0) // It's in inner_block
+	c.writeInt32(0) // It's in inner_block
+	c.responseEnd()
 }
 
 func (c *command) SendSpecialPathCount() {
-	c.ResponseStart()
-	c.WriteInt32(cfg.Size())
-	c.ResponseEnd()
+	c.responseStart()
+	c.writeInt32(cfg.Size())
+	c.responseEnd()
 }
 
 func (c *command) SendDirectoryCount() {
-	s, err := c.ReadString()
+	s, err := c.readString()
 	if err != nil {
 		log.Fatalf("ERROR: Can't send directory count for %v", err)
 	}
@@ -239,14 +248,14 @@ func (c *command) SendDirectoryCount() {
 	if err != nil {
 		log.Fatalf("ERROR: Can't get directories inside path %v", err)
 	}
-	c.ResponseStart()
-	c.WriteInt32(uint32(len(count)))
-	c.ResponseEnd()
+	c.responseStart()
+	c.writeInt32(uint32(len(count)))
+	c.responseEnd()
 }
 
 func (c *command) SendSelectFile() {
 	path := fsUtil.NormalizePath("/Users/wuff/Documents/quarkgo")
-	c.ResponseStart()
-	c.WriteString(path)
-	c.ResponseEnd()
+	c.responseStart()
+	c.writeString(path)
+	c.responseEnd()
 }

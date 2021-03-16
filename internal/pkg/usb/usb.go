@@ -1,6 +1,8 @@
-package usbUtils
+package usb
 
 import (
+	"context"
+	"fmt"
 	"log"
 	"time"
 
@@ -17,16 +19,51 @@ const (
 type USBInterface struct {
 }
 
+// Waits for a device to be connected that matches VID: 0x057E PID: 0x3000
+func (u *USBInterface) IsConnected(ctx context.Context) chan bool {
+	// Set ticker to search for the required device
+	ticker := time.NewTicker(500 * time.Millisecond)
+	c := make(chan bool)
+
+	go func() {
+		fmt.Println("Waiting for USB device to appear...")
+		// Initialize a new Context.
+		gctx := gousb.NewContext()
+		defer gctx.Close()
+
+		for range ticker.C {
+			if ctx.Err() != nil {
+				fmt.Println("Closing is connected...")
+				c <- false
+				return
+			}
+
+			// Open any device with a given VID/PID using a convenience function.
+			// If none is found, it returns nil and nil error
+			dev, _ := gctx.OpenDeviceWithVIDPID(VendorID, ProductID)
+			if dev != nil {
+				// Device found, retry
+				dev.Close()
+				c <- true
+				return
+			}
+
+		}
+	}()
+	return c
+}
+
 func (u *USBInterface) GetDescription() (string, error) {
 	// Initialize a new Context.
 	ctx := gousb.NewContext()
 	defer ctx.Close()
-
 	// Open any device with a given VID/PID using a convenience function.
+	// If none is found, it returns nil and nil error
 	dev, err := ctx.OpenDeviceWithVIDPID(VendorID, ProductID)
-	if err != nil {
-		return "", err
+	if dev == nil && err == nil {
+		return "", fmt.Errorf("Coulnd't find specified device VID: %v, PID: %v", VendorID, ProductID)
 	}
+
 	defer dev.Close()
 
 	s, err := dev.Product()
