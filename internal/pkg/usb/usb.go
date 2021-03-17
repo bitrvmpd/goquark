@@ -43,7 +43,7 @@ func (u *USBInterface) isConnected() chan bool {
 			// If none is found, it returns nil and nil error
 			dev, _ := gctx.OpenDeviceWithVIDPID(VendorID, ProductID)
 			if dev != nil {
-				// Device found, retry
+				// Device found, exit loop.
 				dev.Close()
 				c <- true
 				return
