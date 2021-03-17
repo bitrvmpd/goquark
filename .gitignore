@@ -5,3 +5,4 @@ build/
 scripts/
 Makefile
 .DS_Store
+*.app
