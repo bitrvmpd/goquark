@@ -3,6 +3,7 @@ package cfg
 import (
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/viper"
@@ -13,7 +14,11 @@ const ConfigPath = "goquark"
 func init() {
 	viper.SetConfigName(ConfigPath) // name of config file (without extension
 	viper.SetConfigType("yaml")
-	viper.AddConfigPath(".") // optionally look for config in the working directory
+	userDir, err := os.UserHomeDir()
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+	}
+	viper.AddConfigPath(userDir) // optionally look for config in the working directory
 
 	// Find and read the config file
 	if err := viper.ReadInConfig(); err != nil {
