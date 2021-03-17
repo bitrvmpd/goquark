@@ -54,7 +54,7 @@ func (u *USBInterface) isConnected() chan bool {
 	return c
 }
 
-func (u *USBInterface) GetDescription() (string, error) {
+func (u *USBInterface) getDescription() (string, error) {
 	// Initialize a new Context.
 	ctx := gousb.NewContext()
 	defer ctx.Close()
@@ -74,7 +74,7 @@ func (u *USBInterface) GetDescription() (string, error) {
 	return s, nil
 }
 
-func (u *USBInterface) GetSerialNumber() (string, error) {
+func (u *USBInterface) getSerialNumber() (string, error) {
 	// Initialize a new Context.
 	ctx := gousb.NewContext()
 	defer ctx.Close()

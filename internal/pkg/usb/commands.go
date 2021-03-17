@@ -150,7 +150,7 @@ func (c *command) readCMD() (ID, error) {
 }
 
 func (c *command) retrieveDesc() (string, error) {
-	s, err := c.usbBuffer.GetDescription()
+	s, err := c.usbBuffer.getDescription()
 	if err != nil {
 		return "", err
 	}
@@ -158,7 +158,7 @@ func (c *command) retrieveDesc() (string, error) {
 }
 
 func (c *command) retrieveSerialNumber() (string, error) {
-	s, err := c.usbBuffer.GetSerialNumber()
+	s, err := c.usbBuffer.getSerialNumber()
 	if err != nil {
 		return "", err
 	}
