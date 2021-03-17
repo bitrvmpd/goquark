@@ -1,3 +1,7 @@
 goquark
 .vscode
 goquark.yaml
+build/
+scripts/
+Makefile
+.DS_Store
