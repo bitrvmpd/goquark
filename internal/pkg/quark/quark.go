@@ -7,7 +7,7 @@ import (
 	"github.com/bitrvmpd/goquark/internal/pkg/usb"
 )
 
-func Listen(ctx context.Context, cancel context.CancelFunc) {
+func Listen(ctx context.Context) {
 	c, err := usb.New(ctx)
 	if err != nil {
 		log.Fatalf("ERROR: Couldn't initialize command interface: %v", err)

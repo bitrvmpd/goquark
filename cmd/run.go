@@ -18,7 +18,7 @@ var runCmd = &cobra.Command{
 	If no folders are specified it serves the current one`,
 	Run: func(cmd *cobra.Command, args []string) {
 		ctx := context.Background()
-		ctx, cancel := context.WithCancel(ctx)
-		quark.Listen(ctx, cancel)
+		//ctx, cancel := context.WithCancel(ctx)
+		quark.Listen(ctx)
 	},
 }

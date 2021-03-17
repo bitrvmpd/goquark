@@ -57,7 +57,7 @@ func onReady() {
 			}
 			ctx = context.Background()
 			ctx, cancel = context.WithCancel(ctx)
-			go quark.Listen(ctx, cancel)
+			go quark.Listen(ctx)
 			started = true
 			mStart.SetTitle("Stop")
 		case <-cName.ClickedCh:
