@@ -34,8 +34,8 @@ func onReady() {
 	mPaths := systray.AddMenuItem("Folders", "Enable/Disable exposed folders")
 
 	// Reads configuration, sets routes
-	for folder, path := range cfg.ListFolders() {
-		folders[folder] = mPaths.AddSubMenuItemCheckbox(folder, path, true)
+	for _, folder := range cfg.ListFolders() {
+		folders[folder.Alias] = mPaths.AddSubMenuItemCheckbox(folder.Alias, folder.Path, true)
 	}
 	// Sets the icon of a menu item. Only available on Mac and Windows.
 	systray.AddSeparator()

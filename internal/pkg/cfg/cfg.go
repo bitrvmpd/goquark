@@ -4,12 +4,20 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/viper"
 )
 
 const ConfigPath = "goquark"
+
+type cfgNode struct {
+	Index int
+	Alias string
+	Path  string
+}
 
 func init() {
 	viper.SetConfigName(ConfigPath) // name of config file (without extension
@@ -48,27 +56,42 @@ func Size() uint32 {
 }
 
 func AddFolder(name string, path string) {
-	viper.Set(name, path)
+	m := map[string]string{name: path}
+	s := len(viper.AllKeys())
+	viper.Set(strconv.Itoa(s), m)
 	if err := viper.WriteConfig(); err != nil {
 		log.Fatalf("ERROR: %v", err)
 	}
 }
 
-func RemoveFolder(name string) {
-	if !viper.IsSet(name) {
+func RemoveFolder(idx int) {
+	if !viper.IsSet(strconv.Itoa(idx)) {
 		log.Println("value is not here..")
 	}
-	viper.Set(name, nil)
+	viper.Set(strconv.Itoa(idx), nil)
 	if err := viper.WriteConfig(); err != nil {
 		log.Fatalf("ERROR: %v", err)
 	}
 }
 
-func ListFolders() map[string]string {
+// Returns an array of maps.
+// It'll always be ordered.
+func ListFolders() []cfgNode {
 	vKeys := viper.AllKeys()
-	folders := make(map[string]string, len(vKeys))
+	folders := make([]cfgNode, len(vKeys))
+
 	for _, key := range vKeys {
-		folders[key] = viper.GetString(key)
+		comK := strings.Split(key, ".")
+		v, err := strconv.Atoi(comK[0])
+		if err != nil {
+			log.Printf("ERROR: %v", err)
+		}
+		folders[v] = cfgNode{
+			Index: v,
+			Alias: comK[1],
+			Path:  viper.GetString(key),
+		}
 	}
+
 	return folders
 }
