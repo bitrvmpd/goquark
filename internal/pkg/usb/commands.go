@@ -17,6 +17,19 @@ const (
 	BlockSize = 4096
 	GLCI      = 1229147207
 	GLCO      = 1329810503
+	header    = `
+	####################################
+	###### < < G O  Q U A R K > > ######
+	####################################
+	
+	goQuark is ready for connections...
+	
+	+-----------------------------------+
+	|	Client:		%v    |
+	|	Version:	%v       |
+	+-----------------------------------+
+
+`
 )
 
 const (
@@ -85,7 +98,8 @@ func (c *command) ProcessUSBPackets() {
 	// Check if device is connected.
 	b := c.usbBuffer.isConnected()
 
-	// If false, returns
+	// Waits for device to appear
+	// If false, returns.
 	if !<-b {
 		return
 	}
@@ -105,19 +119,7 @@ func (c *command) ProcessUSBPackets() {
 		log.Fatalf("ERROR: %v", err)
 	}
 
-	fmt.Printf(
-		`
-###################################
-######## < < Q U A R K > > ########
-###################################
-
-goQuark is ready for connections...
-
-+-----------------------------------+
-|	Client:		%v    |
-|	Version:	%v       |
-+-----------------------------------+
-`, d, s)
+	fmt.Printf(header, d, s)
 
 	for {
 		// Magic [:4]
