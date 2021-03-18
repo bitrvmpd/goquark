@@ -89,6 +89,12 @@ func onReady() {
 			if err != nil {
 				log.Printf("INFO: %v", err)
 			}
+
+			// Don't add a folder if the user didn't selected it.
+			if f == "" {
+				continue
+			}
+
 			cfg.AddFolder(path.Base(f), f)
 		}
 	}
