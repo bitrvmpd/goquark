@@ -5,7 +5,6 @@ import (
 	"log"
 
 	"golang.org/x/text/encoding/unicode"
-	"golang.org/x/text/transform"
 )
 
 type buffer struct {
@@ -38,10 +37,6 @@ func (c *buffer) responseEnd() {
 	d := make([]byte, BlockSize-len(c.resp_block))
 	c.resp_block = append(c.resp_block, d...)
 
-	log.Println("======== RESPONSE END ========")
-	log.Println(c.resp_block)
-	log.Println("======== RESPONSE END ========")
-
 	// Write the buffer
 	_, err := c.usbBuffer.Write(c.resp_block)
 	if err != nil {
@@ -54,17 +49,13 @@ func (c *buffer) respondFailure(r uint32) {
 	c.resp_block = make([]byte, 0, BlockSize)
 
 	// Append magic
-	d := make([]byte, 0, BlockSize)
+	d := make([]byte, 0, 4)
 	binary.LittleEndian.PutUint32(d, GLCO)
-	// Trim trailing 0
-	d = trimTrailing(d)
 	c.resp_block = append(c.resp_block, d...)
 
 	// Append error
-	b := make([]byte, 0, BlockSize)
+	b := make([]byte, 0, 4)
 	binary.LittleEndian.PutUint32(b, r)
-	// Trim trailing 0
-	b = trimTrailing(b)
 	c.resp_block = append(c.resp_block, b...)
 
 	c.responseEnd()
@@ -90,52 +81,38 @@ func (c *buffer) writeInt32(n uint32) {
 	binary.LittleEndian.PutUint32(b, n)
 	c.resp_block = append(c.resp_block, b...)
 }
+func (c *buffer) writeInt64(n uint64) {
+	b := make([]byte, 8)
+	binary.LittleEndian.PutUint64(b, n)
+	c.resp_block = append(c.resp_block, b...)
+}
 
 func (c *buffer) readString() (string, error) {
-	c.inner_block = make([]byte, BlockSize)
-	_, err := c.usbBuffer.Read(c.inner_block)
-	if err != nil {
-		return "", err
-	}
+	str := make([]byte, BlockSize)
 
-	// Prepare decoder
+	// Prepare decoder, skip magic + cmd
 	enc := unicode.UTF16(unicode.LittleEndian, unicode.IgnoreBOM).NewDecoder()
-	t := transform.NewReader(c.usbBuffer, enc)
-	// Parse bytes to utf8
-	_, err = t.Read(c.inner_block)
+	_, _, err := enc.Transform(str, c.inner_block[8:], false)
 	if err != nil {
 		return "", err
 	}
 
-	s := string(c.inner_block)
+	s := string(str)
 	return s, nil
 }
 
 func (c *buffer) writeString(v string) {
-	d := []byte(v)
-	sLength := len(v)
-	c.writeInt32(uint32(sLength))
-	o := make([]byte, BlockSize-len(c.resp_block))
+	o := make([]byte, BlockSize)
 
 	// Prepare encoder
-	enc := unicode.UTF16(unicode.LittleEndian, unicode.ExpectBOM).NewEncoder()
-	_, _, err := enc.Transform(o, d, true)
+	enc := unicode.UTF16(unicode.LittleEndian, unicode.IgnoreBOM).NewEncoder()
+	nDst, _, err := enc.Transform(o, []byte(v), false)
 
+	//Write len of chars.
+	c.writeInt32(uint32(len(v)))
 	if err != nil {
 		log.Fatalf("ERROR: Can't write string: %v", err)
 	}
-
-	o = trimTrailing(o)
-	c.resp_block = append(c.resp_block, o...)
-}
-
-func trimTrailing(b []byte) []byte {
-	var c int
-	for i := len(b) - 1; i >= 0; i-- {
-		if b[i] != 0 {
-			c = i + 1
-			break
-		}
-	}
-	return b[:c]
+	// Write num of bytes reported by enc.Transform
+	c.resp_block = append(c.resp_block, o[:nDst]...)
 }
