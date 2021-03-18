@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/bitrvmpd/goquark/internal/pkg/cfg"
 	fsUtil "github.com/bitrvmpd/goquark/internal/pkg/fs"
@@ -73,7 +74,7 @@ func New(ctx context.Context) (*command, error) {
 		Invalid:             func() { log.Printf("usbUtils.Invalid:") },
 		GetDriveCount:       c.SendDriveCount,
 		GetDriveInfo:        c.SendDriveInfo,
-		StatPath:            func() { log.Printf("usbUtils.StatPath:") },
+		StatPath:            c.StatPath,
 		GetFileCount:        func() { log.Printf("usbUtils.GetFileCount:") },
 		GetFile:             func() { log.Printf("usbUtils.GetFile:") },
 		GetDirectoryCount:   c.SendDirectoryCount,
@@ -86,7 +87,7 @@ func New(ctx context.Context) (*command, error) {
 		Delete:              func() { log.Printf("usbUtils.Delete:") },
 		Rename:              func() { log.Printf("usbUtils.Rename:") },
 		GetSpecialPathCount: c.SendSpecialPathCount,
-		GetSpecialPath:      func() { log.Printf("usbUtils.SendSpecialPath:") },
+		GetSpecialPath:      c.SendSpecialPath,
 		SelectFile:          c.SendSelectFile,
 	}
 
@@ -186,14 +187,8 @@ func (c *command) SendDriveInfo() {
 		log.Fatalf("ERROR: %v", err)
 	}
 
-	log.Println("======== SendDriveInfo ========")
-	log.Println(c.inner_block)
-	log.Println("======== SendDriveInfo ========")
-
 	// Read payload
 	idx := binary.LittleEndian.Uint32(c.inner_block[8:])
-
-	log.Println(idx)
 
 	if int(idx) > len(drives) || int(idx) <= -1 {
 		c.respondFailure(0xDEAD)
@@ -209,8 +204,28 @@ func (c *command) SendDriveInfo() {
 	c.responseStart()
 	c.writeString(label)
 	c.writeString(drive)
-	c.writeInt32(0) // It's in inner_block
-	c.writeInt32(0) // It's in inner_block
+	c.writeInt32(0)
+	c.writeInt32(0)
+	c.responseEnd()
+}
+
+func (c *command) SendSpecialPath() {
+	log.Println("SendSpecialPath")
+
+	// Read payload
+	idx := binary.LittleEndian.Uint32(c.inner_block[8:12])
+
+	if int(idx) > int(cfg.Size()) || int(idx) <= -1 {
+		c.respondFailure(0xDEAD)
+		log.Fatalf("ERROR: Invalid path index %v", idx)
+	}
+
+	folders := cfg.ListFolders()
+	folder := folders[idx]
+
+	c.responseStart()
+	c.writeString(folder.Alias)
+	c.writeString(fsUtil.NormalizePath(folder.Path))
 	c.responseEnd()
 }
 
@@ -242,5 +257,40 @@ func (c *command) SendSelectFile() {
 	path := fsUtil.NormalizePath("/Users/wuff/Documents/quarkgo")
 	c.responseStart()
 	c.writeString(path)
+	c.responseEnd()
+}
+
+func (c *command) StatPath() {
+	log.Println("StatPath")
+	path, err := c.readString()
+	if err != nil {
+		log.Fatalf("ERROR: Can't read string from buffer. %v", err)
+		return
+	}
+
+	path = fsUtil.DenormalizePath(path)
+	fi, err := os.Stat(path)
+	if err != nil {
+		log.Fatalf("ERROR: Couldn't get %v stats. %v", path, err)
+	}
+
+	ftype := 0
+	var fsize int64 = 0
+
+	if !fi.IsDir() {
+		ftype = 1
+		fsize = fi.Size()
+	}
+	if fi.IsDir() {
+		ftype = 2
+	}
+	if ftype == 0 {
+		c.respondFailure(0xDEAD)
+		return
+	}
+
+	c.responseStart()
+	c.writeInt32(uint32(ftype))
+	c.writeInt64(uint64(fsize))
 	c.responseEnd()
 }
