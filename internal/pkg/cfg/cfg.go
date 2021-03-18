@@ -25,6 +25,7 @@ func init() {
 		// Handle errors reading the config file
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
 			// Config file not found; ignore error if desired
+			viper.AllowEmptyEnv(true)
 			err = viper.SafeWriteConfig() // writes current config to predefined path set by 'viper.AddConfigPath()' and 'viper.SetConfigName'
 			if err != nil {
 				log.Fatalf("Couldn't write config file: %v \n", err)
@@ -48,6 +49,9 @@ func Size() uint32 {
 
 func AddFolder(name string, path string) {
 	viper.Set(name, path)
+	if err := viper.WriteConfig(); err != nil {
+		log.Fatalf("ERROR: %v", err)
+	}
 }
 
 func RemoveFolder(name string) {
@@ -55,4 +59,16 @@ func RemoveFolder(name string) {
 		log.Println("value is not here..")
 	}
 	viper.Set(name, nil)
+	if err := viper.WriteConfig(); err != nil {
+		log.Fatalf("ERROR: %v", err)
+	}
+}
+
+func ListFolders() map[string]string {
+	vKeys := viper.AllKeys()
+	folders := make(map[string]string, len(vKeys))
+	for _, key := range vKeys {
+		folders[key] = viper.GetString(key)
+	}
+	return folders
 }
