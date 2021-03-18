@@ -168,6 +168,7 @@ func (c *command) retrieveSerialNumber() (string, error) {
 }
 
 func (c *command) SendDriveCount() {
+	log.Println("SendDriveCount")
 	drives, err := fsUtil.ListDrives()
 	if err != nil {
 		log.Fatalf("ERROR: %v", err)
@@ -179,17 +180,20 @@ func (c *command) SendDriveCount() {
 }
 
 func (c *command) SendDriveInfo() {
+	log.Println("SendDriveInfo")
 	drives, err := fsUtil.ListDrives()
 	if err != nil {
 		log.Fatalf("ERROR: %v", err)
 	}
 
-	_, err = c.readInt32() // It's in inner_block
-	if err != nil {
-		log.Fatalf("ERROR: %v", err)
-	}
+	log.Println("======== SendDriveInfo ========")
+	log.Println(c.inner_block)
+	log.Println("======== SendDriveInfo ========")
 
-	idx := binary.LittleEndian.Uint32(c.inner_block[:4])
+	// Read payload
+	idx := binary.LittleEndian.Uint32(c.inner_block[8:])
+
+	log.Println(idx)
 
 	if int(idx) > len(drives) || int(idx) <= -1 {
 		c.respondFailure(0xDEAD)
@@ -211,12 +215,14 @@ func (c *command) SendDriveInfo() {
 }
 
 func (c *command) SendSpecialPathCount() {
+	log.Println("SendSpecialPathCount")
 	c.responseStart()
 	c.writeInt32(cfg.Size())
 	c.responseEnd()
 }
 
 func (c *command) SendDirectoryCount() {
+	log.Println("SendDirectoryCount")
 	s, err := c.readString()
 	if err != nil {
 		log.Fatalf("ERROR: Can't send directory count for %v", err)
@@ -232,6 +238,7 @@ func (c *command) SendDirectoryCount() {
 }
 
 func (c *command) SendSelectFile() {
+	log.Println("SendSelectFile")
 	path := fsUtil.NormalizePath("/Users/wuff/Documents/quarkgo")
 	c.responseStart()
 	c.writeString(path)
