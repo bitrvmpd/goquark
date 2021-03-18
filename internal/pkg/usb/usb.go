@@ -28,27 +28,27 @@ func (u *USBInterface) isConnected() chan bool {
 
 	go func() {
 		fmt.Println("Waiting for USB device to appear...")
+
 		// Initialize a new Context.
 		gctx := gousb.NewContext()
 		defer gctx.Close()
 
 		for range ticker.C {
-			if u.ctx.Err() != nil {
-				fmt.Println("Stopping func: isConnected...")
+			select {
+			case <-u.ctx.Done():
 				c <- false
 				return
+			case <-ticker.C:
+				// Open any device with a given VID/PID using a convenience function.
+				// If none is found, it returns nil and nil error
+				dev, _ := gctx.OpenDeviceWithVIDPID(VendorID, ProductID)
+				if dev != nil {
+					// Device found, exit loop.
+					dev.Close()
+					c <- true
+					return
+				}
 			}
-
-			// Open any device with a given VID/PID using a convenience function.
-			// If none is found, it returns nil and nil error
-			dev, _ := gctx.OpenDeviceWithVIDPID(VendorID, ProductID)
-			if dev != nil {
-				// Device found, exit loop.
-				dev.Close()
-				c <- true
-				return
-			}
-
 		}
 	}()
 	return c
@@ -129,15 +129,11 @@ func (u *USBInterface) Read(p []byte) (int, error) {
 
 	// Just before reading, prepare a way to cancel this request
 	go func() {
-		for {
-			if u.ctx.Err() != nil {
-				done()
-				dev.Close()
-				ctx.Close()
-				break
-			}
-			// TODO: Improve by using channels
-			time.Sleep(1 * time.Millisecond)
+		for range u.ctx.Done() {
+			done()
+			dev.Close()
+			ctx.Close()
+			return
 		}
 	}()
 	// Read data from the USB device.
@@ -188,15 +184,11 @@ func (u *USBInterface) Write(p []byte) (int, error) {
 
 	// Just before writting, prepare a way to cancel this request
 	go func() {
-		for {
-			if u.ctx.Err() != nil {
-				done()
-				dev.Close()
-				ctx.Close()
-				break
-			}
-			// TODO: Improve by using channels
-			time.Sleep(1 * time.Millisecond)
+		for range u.ctx.Done() {
+			done()
+			dev.Close()
+			ctx.Close()
+			return
 		}
 	}()
 	// Write data to the USB device.
