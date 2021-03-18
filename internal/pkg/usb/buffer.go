@@ -88,16 +88,19 @@ func (c *buffer) writeInt64(n uint64) {
 }
 
 func (c *buffer) readString() (string, error) {
+	//TODO: make it less verbose.
 	str := make([]byte, BlockSize)
-
-	// Prepare decoder, skip magic + cmd
+	// Get String length
+	length := binary.LittleEndian.Uint32(c.inner_block[8:12])
+	// Prepare decoder, skip magic + cmd + string length
 	enc := unicode.UTF16(unicode.LittleEndian, unicode.IgnoreBOM).NewDecoder()
-	_, _, err := enc.Transform(str, c.inner_block[8:], false)
+	nDst, _, err := enc.Transform(str, c.inner_block[12:12+(length*2)], false)
 	if err != nil {
 		return "", err
 	}
 
-	s := string(str)
+	// Convert num of bytes reported by enc.Transform
+	s := string(str[:nDst])
 	return s, nil
 }
 
