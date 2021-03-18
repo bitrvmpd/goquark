@@ -15,8 +15,8 @@ var (
 const homeDrive = "Home"
 
 func init() {
-	if runtime.GOOS == "macos" {
-		osName = "macos"
+	if runtime.GOOS == "darwin" {
+		osName = "darwin"
 	} else if runtime.GOOS == "windows" {
 		osName = "windows"
 	} else if runtime.GOOS == "linux" {
