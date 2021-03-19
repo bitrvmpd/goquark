@@ -79,7 +79,7 @@ func New(ctx context.Context) (*command, error) {
 		ReadFile:            c.ReadFile,
 		WriteFile:           func() { log.Printf("usbUtils.WriteFile:") },
 		EndFile:             func() { log.Printf("usbUtils.EndFile:") },
-		Create:              func() { log.Printf("usbUtils.Create:") },
+		Create:              c.Create,
 		Delete:              c.Delete,
 		Rename:              c.Rename,
 		GetSpecialPathCount: c.GetSpecialPathCount,
@@ -461,6 +461,43 @@ func (c *command) Delete() {
 	err = os.RemoveAll(path)
 	if err != nil {
 		log.Fatalf("ERROR: Couldn't removeAll %v. %v", path, err)
+	}
+
+	c.respondEmpty()
+}
+
+func (c *command) Create() {
+	// 1 = file, 2 = dir
+	fType, err := c.readInt32()
+	if err != nil {
+		log.Fatalf("ERROR: Couldn't read int32 from buffer. %v", err)
+	}
+
+	path, err := c.readString()
+	if err != nil {
+		log.Fatalf("ERROR: Couldn't read string from buffer. %v", err)
+	}
+	path = fsUtil.DenormalizePath(path)
+
+	if fType != 1 && fType != 2 {
+		c.respondFailure(0xDEAD)
+	}
+
+	// 1 = file, 2 = dir
+	if fType == 1 {
+		_, err := os.Create(path)
+		if err != nil {
+			log.Fatalf("ERROR: Couldn't create file %v. %v", path, err)
+			c.respondFailure(0xDEAD)
+			return
+		}
+	} else if fType == 2 {
+		err := os.Mkdir(path, 0755)
+		if err != nil {
+			log.Fatalf("ERROR: Couldn't create file %v. %v", path, err)
+			c.respondFailure(0xDEAD)
+			return
+		}
 	}
 
 	c.respondEmpty()
