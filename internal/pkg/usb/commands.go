@@ -80,7 +80,7 @@ func New(ctx context.Context) (*command, error) {
 		WriteFile:           func() { log.Printf("usbUtils.WriteFile:") },
 		EndFile:             func() { log.Printf("usbUtils.EndFile:") },
 		Create:              func() { log.Printf("usbUtils.Create:") },
-		Delete:              func() { log.Printf("usbUtils.Delete:") },
+		Delete:              c.Delete,
 		Rename:              c.Rename,
 		GetSpecialPathCount: c.GetSpecialPathCount,
 		GetSpecialPath:      c.GetSpecialPath,
@@ -437,6 +437,30 @@ func (c *command) Rename() {
 	err = os.Rename(path, newPath)
 	if err != nil {
 		log.Fatalf("ERROR: Couldn't rename %v to %v. %v", path, newPath, err)
+	}
+
+	c.respondEmpty()
+}
+
+func (c *command) Delete() {
+	fType, err := c.readInt32()
+	if err != nil {
+		log.Fatalf("ERROR: Couldn't read int32 from buffer. %v", err)
+	}
+
+	path, err := c.readString()
+	if err != nil {
+		log.Fatalf("ERROR: Couldn't read string from buffer. %v", err)
+	}
+	path = fsUtil.DenormalizePath(path)
+
+	if fType != 1 && fType != 2 {
+		c.respondFailure(0xDEAD)
+	}
+
+	err = os.RemoveAll(path)
+	if err != nil {
+		log.Fatalf("ERROR: Couldn't removeAll %v. %v", path, err)
 	}
 
 	c.respondEmpty()
