@@ -81,7 +81,7 @@ func New(ctx context.Context) (*command, error) {
 		EndFile:             func() { log.Printf("usbUtils.EndFile:") },
 		Create:              func() { log.Printf("usbUtils.Create:") },
 		Delete:              func() { log.Printf("usbUtils.Delete:") },
-		Rename:              func() { log.Printf("usbUtils.Rename:") },
+		Rename:              c.Rename,
 		GetSpecialPathCount: c.GetSpecialPathCount,
 		GetSpecialPath:      c.GetSpecialPath,
 		SelectFile:          c.SelectFile,
@@ -410,4 +410,34 @@ func (c *command) ReadFile() {
 	if _, err = c.usb.Write(fbuffer); err != nil {
 		log.Fatalf("ERROR: Couldn't write %v.", err)
 	}
+}
+
+func (c *command) Rename() {
+	fType, err := c.readInt32()
+	if err != nil {
+		log.Fatalf("ERROR: Couldn't read int32 from buffer. %v", err)
+	}
+
+	path, err := c.readString()
+	if err != nil {
+		log.Fatalf("ERROR: Couldn't read string from buffer. %v", err)
+	}
+	path = fsUtil.DenormalizePath(path)
+
+	newPath, err := c.readString()
+	if err != nil {
+		log.Fatalf("ERROR: Couldn't read string from buffer. %v", err)
+	}
+	newPath = fsUtil.DenormalizePath(newPath)
+
+	if fType != 1 && fType != 2 {
+		c.respondFailure(0xDEAD)
+	}
+
+	err = os.Rename(path, newPath)
+	if err != nil {
+		log.Fatalf("ERROR: Couldn't rename %v to %v. %v", path, newPath, err)
+	}
+
+	c.respondEmpty()
 }
