@@ -1,6 +1,7 @@
 package usb
 
 import (
+	"bytes"
 	"encoding/binary"
 	"log"
 
@@ -8,37 +9,38 @@ import (
 )
 
 type buffer struct {
-	inner_block []byte
-	resp_block  []byte
-	usbBuffer   *USBInterface
+	in_buff  bytes.Buffer
+	out_buff bytes.Buffer
+
+	usb *USBInterface
 }
 
 func (c *buffer) responseStart() {
 	// Empty our out buffer
-	c.resp_block = make([]byte, 0, BlockSize)
+	c.out_buff.Reset()
 
 	//Fast convertion to uint32
 	d := make([]byte, 4)
 	binary.LittleEndian.PutUint32(d, GLCO)
 
 	//Append to our magic and 0 delimiter
-	c.resp_block = append(c.resp_block, d...)
+	c.out_buff.Write(d)
 
 	//Fast convertion to uint32
 	d = make([]byte, 4)
 	binary.LittleEndian.PutUint32(d, 0)
 
 	//Append to our magic and 0 delimiter
-	c.resp_block = append(c.resp_block, d...)
+	c.out_buff.Write(d)
 }
 
 func (c *buffer) responseEnd() {
 	// Fill with 0 up to 4096 bytes
-	d := make([]byte, BlockSize-len(c.resp_block))
-	c.resp_block = append(c.resp_block, d...)
+	d := make([]byte, BlockSize-c.out_buff.Len())
+	c.out_buff.Write(d)
 
 	// Write the buffer
-	_, err := c.usbBuffer.Write(c.resp_block)
+	_, err := c.usb.Write(c.out_buff.Bytes())
 	if err != nil {
 		log.Fatalf("ERROR: %v", err)
 	}
@@ -46,18 +48,17 @@ func (c *buffer) responseEnd() {
 
 func (c *buffer) respondFailure(r uint32) {
 	// Empty our out buffer
-	c.resp_block = make([]byte, 0, BlockSize)
+	c.out_buff.Reset()
 
 	//Fast convertion to uint32
 	d := make([]byte, 4)
 	binary.LittleEndian.PutUint32(d, GLCO)
-
-	c.resp_block = append(c.resp_block, d...)
+	c.out_buff.Write(d)
 
 	// Append error
 	b := make([]byte, 4)
 	binary.LittleEndian.PutUint32(b, r)
-	c.resp_block = append(c.resp_block, b...)
+	c.out_buff.Write(b)
 
 	c.responseEnd()
 }
@@ -68,40 +69,53 @@ func (c *buffer) respondEmpty() {
 }
 
 func (c *buffer) readInt32() (int, error) {
-	c.inner_block = make([]byte, BlockSize)
-	_, err := c.usbBuffer.Read(c.inner_block)
+	d := make([]byte, 4)
+	_, err := c.in_buff.Read(d)
 	if err != nil {
-		return 0, err
+		log.Fatalf("ERROR: Couldn't read from buffer!. %v", err)
 	}
-	i := binary.LittleEndian.Uint32(c.inner_block[:4])
+	i := binary.LittleEndian.Uint32(d)
 	return int(i), nil
+}
+
+func (c *buffer) readFromUSB() {
+	c.in_buff.Reset()
+	b := make([]byte, BlockSize)
+	_, err := c.usb.Read(b)
+	if err != nil {
+		log.Fatalf("ERROR: Couldn't read from usb!. %v", err)
+	}
+	c.in_buff.Write(b)
 }
 
 func (c *buffer) writeInt32(n uint32) {
 	b := make([]byte, 4)
 	binary.LittleEndian.PutUint32(b, n)
-	c.resp_block = append(c.resp_block, b...)
+	c.out_buff.Write(b)
 }
 func (c *buffer) writeInt64(n uint64) {
 	b := make([]byte, 8)
 	binary.LittleEndian.PutUint64(b, n)
-	c.resp_block = append(c.resp_block, b...)
+	c.out_buff.Write(b)
 }
 
 func (c *buffer) readString() (string, error) {
-	//TODO: make it less verbose.
-	str := make([]byte, BlockSize)
-	// Get String length
-	length := binary.LittleEndian.Uint32(c.inner_block[8:12])
-	// Prepare decoder, skip magic + cmd + string length
+	//Pop the size
+	size, err := c.readInt32()
+	if err != nil {
+		return "", err
+	}
+
+	o := make([]byte, size)
 	enc := unicode.UTF16(unicode.LittleEndian, unicode.IgnoreBOM).NewDecoder()
-	nDst, _, err := enc.Transform(str, c.inner_block[12:12+(length*2)], false)
+	_, _, err = enc.Transform(o, c.in_buff.Next(size*2), false)
 	if err != nil {
 		return "", err
 	}
 
 	// Convert num of bytes reported by enc.Transform
-	s := string(str[:nDst])
+	s := string(o)
+
 	return s, nil
 }
 
@@ -117,6 +131,5 @@ func (c *buffer) writeString(v string) {
 	if err != nil {
 		log.Fatalf("ERROR: Can't write string: %v", err)
 	}
-	// Write num of bytes reported by enc.Transform
-	c.resp_block = append(c.resp_block, o[:nDst]...)
+	c.out_buff.Write(o[:nDst])
 }

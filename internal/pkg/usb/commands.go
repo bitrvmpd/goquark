@@ -2,8 +2,6 @@ package usb
 
 import (
 	"context"
-	"encoding/binary"
-	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -62,12 +60,10 @@ type command struct {
 func New(ctx context.Context) (*command, error) {
 	c := command{
 		buffer: &buffer{
-			usbBuffer: &USBInterface{
+			usb: &USBInterface{
 				ctx: ctx,
 			},
-			inner_block: make([]byte, BlockSize),
-			resp_block:  make([]byte, 0, BlockSize)},
-	}
+		}}
 
 	// Map cmd ID to respective function
 	c.cmdMap = map[ID]func(){
@@ -97,7 +93,7 @@ func New(ctx context.Context) (*command, error) {
 func (c *command) ProcessUSBPackets() {
 
 	// Check if device is connected.
-	b := c.usbBuffer.isConnected()
+	b := c.usb.isConnected()
 
 	// Waits for device to appear
 	// If false, returns.
@@ -123,6 +119,8 @@ func (c *command) ProcessUSBPackets() {
 	fmt.Printf(header, d, s)
 
 	for {
+		c.readFromUSB()
+
 		// Magic [:4]
 		i, err := c.readInt32()
 		if err != nil {
@@ -134,26 +132,18 @@ func (c *command) ProcessUSBPackets() {
 		}
 
 		// CMD [4:]
-		cmd, err := c.readCMD()
+		cmd, err := c.readInt32()
 		if err != nil {
 			log.Fatalln(err)
 		}
 
 		// Invoke requested function
-		c.cmdMap[cmd]()
+		c.cmdMap[ID(cmd)]()
 	}
-}
-
-func (c *command) readCMD() (ID, error) {
-	if c.inner_block == nil {
-		return Invalid, errors.New("ERROR: inner_block is not initialized")
-	}
-
-	return ID(binary.LittleEndian.Uint32(c.inner_block[4:])), nil
 }
 
 func (c *command) retrieveDesc() (string, error) {
-	s, err := c.usbBuffer.getDescription()
+	s, err := c.usb.getDescription()
 	if err != nil {
 		return "", err
 	}
@@ -161,7 +151,7 @@ func (c *command) retrieveDesc() (string, error) {
 }
 
 func (c *command) retrieveSerialNumber() (string, error) {
-	s, err := c.usbBuffer.getSerialNumber()
+	s, err := c.usb.getSerialNumber()
 	if err != nil {
 		return "", err
 	}
@@ -188,7 +178,10 @@ func (c *command) SendDriveInfo() {
 	}
 
 	// Read payload
-	idx := binary.LittleEndian.Uint32(c.inner_block[8:])
+	idx, err := c.readInt32()
+	if err != nil {
+		log.Fatalf("ERROR: Couldn't retrieve next int32 %v", err)
+	}
 
 	if int(idx) > len(drives) || int(idx) <= -1 {
 		c.respondFailure(0xDEAD)
@@ -213,7 +206,10 @@ func (c *command) SendSpecialPath() {
 	log.Println("SendSpecialPath")
 
 	// Read payload
-	idx := binary.LittleEndian.Uint32(c.inner_block[8:12])
+	idx, err := c.readInt32()
+	if err != nil {
+		log.Fatalf("ERROR: Couldn't retrieve next int32 %v", err)
+	}
 
 	if int(idx) > int(cfg.Size()) || int(idx) <= -1 {
 		c.respondFailure(0xDEAD)
@@ -317,14 +313,16 @@ func (c *command) SendFileCount() {
 func (c *command) SendFile() {
 	log.Println("SendFile")
 	path, err := c.readString()
-
-	// idx comes after the path
-	idx := binary.LittleEndian.Uint32(c.inner_block[12+(len(path)*2) : 12+4+(len(path)*2)])
-
 	if err != nil {
 		log.Fatalf("ERROR: Can't read string from buffer. %v", err)
 		return
 	}
+	// idx comes after the path
+	idx, err := c.readInt32()
+	if err != nil {
+		log.Fatalf("ERROR: Couldn't retrieve next int32 %v", err)
+	}
+
 	path = fsUtil.DenormalizePath(path)
 	files, err := fsUtil.GetFilesIn(path)
 	if err != nil {
@@ -332,7 +330,7 @@ func (c *command) SendFile() {
 		return
 	}
 
-	if idx >= uint32(len(files)) || idx < uint32(0) {
+	if idx >= len(files) || idx < 0 {
 		c.respondFailure(0xDEAD)
 		return
 	}
