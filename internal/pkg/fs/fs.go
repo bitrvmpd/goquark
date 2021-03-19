@@ -3,7 +3,6 @@ package fs
 import (
 	"io/ioutil"
 	"os"
-	"path/filepath"
 	"runtime"
 	"strings"
 )
@@ -72,7 +71,7 @@ func GetDirectoriesIn(path string) ([]string, error) {
 		if !file.IsDir() {
 			continue
 		}
-		dirs = append(dirs, filepath.Join(path, file.Name()))
+		dirs = append(dirs, file.Name())
 	}
 
 	return dirs, nil
