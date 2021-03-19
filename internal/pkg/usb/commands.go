@@ -68,12 +68,12 @@ func New(ctx context.Context) (*command, error) {
 	// Map cmd ID to respective function
 	c.cmdMap = map[ID]func(){
 		Invalid:             func() { log.Printf("usbUtils.Invalid:") },
-		GetDriveCount:       c.SendDriveCount,
-		GetDriveInfo:        c.SendDriveInfo,
+		GetDriveCount:       c.GetDriveCount,
+		GetDriveInfo:        c.GetDriveInfo,
 		StatPath:            c.StatPath,
-		GetFileCount:        c.SendFileCount,
-		GetFile:             c.SendFile,
-		GetDirectoryCount:   c.SendDirectoryCount,
+		GetFileCount:        c.GetFileCount,
+		GetFile:             c.GetFile,
+		GetDirectoryCount:   c.GetDirectoryCount,
 		GetDirectory:        c.GetDirectory,
 		StartFile:           func() { log.Printf("usbUtils.StartFile:") },
 		ReadFile:            func() { log.Printf("usbUtils.ReadFile:") },
@@ -82,9 +82,9 @@ func New(ctx context.Context) (*command, error) {
 		Create:              func() { log.Printf("usbUtils.Create:") },
 		Delete:              func() { log.Printf("usbUtils.Delete:") },
 		Rename:              func() { log.Printf("usbUtils.Rename:") },
-		GetSpecialPathCount: c.SendSpecialPathCount,
-		GetSpecialPath:      c.SendSpecialPath,
-		SelectFile:          c.SendSelectFile,
+		GetSpecialPathCount: c.GetSpecialPathCount,
+		GetSpecialPath:      c.GetSpecialPath,
+		SelectFile:          c.SelectFile,
 	}
 
 	return &c, nil
@@ -158,8 +158,8 @@ func (c *command) retrieveSerialNumber() (string, error) {
 	return s, nil
 }
 
-func (c *command) SendDriveCount() {
-	log.Println("SendDriveCount")
+func (c *command) GetDriveCount() {
+	log.Println("GetDriveCount")
 	drives, err := fsUtil.ListDrives()
 	if err != nil {
 		log.Fatalf("ERROR: %v", err)
@@ -170,8 +170,8 @@ func (c *command) SendDriveCount() {
 	c.responseEnd()
 }
 
-func (c *command) SendDriveInfo() {
-	log.Println("SendDriveInfo")
+func (c *command) GetDriveInfo() {
+	log.Println("GetDriveInfo")
 	drives, err := fsUtil.ListDrives()
 	if err != nil {
 		log.Fatalf("ERROR: %v", err)
@@ -202,8 +202,8 @@ func (c *command) SendDriveInfo() {
 	c.responseEnd()
 }
 
-func (c *command) SendSpecialPath() {
-	log.Println("SendSpecialPath")
+func (c *command) GetSpecialPath() {
+	log.Println("GetSpecialPath")
 
 	// Read payload
 	idx, err := c.readInt32()
@@ -225,15 +225,15 @@ func (c *command) SendSpecialPath() {
 	c.responseEnd()
 }
 
-func (c *command) SendSpecialPathCount() {
-	log.Println("SendSpecialPathCount")
+func (c *command) GetSpecialPathCount() {
+	log.Println("GetSpecialPathCount")
 	c.responseStart()
 	c.writeInt32(cfg.Size())
 	c.responseEnd()
 }
 
-func (c *command) SendDirectoryCount() {
-	log.Println("SendDirectoryCount")
+func (c *command) GetDirectoryCount() {
+	log.Println("GetDirectoryCount")
 	s, err := c.readString()
 	if err != nil {
 		log.Fatalf("ERROR: Can't send directory count for %v", err)
@@ -248,8 +248,8 @@ func (c *command) SendDirectoryCount() {
 	c.responseEnd()
 }
 
-func (c *command) SendSelectFile() {
-	log.Println("SendSelectFile")
+func (c *command) SelectFile() {
+	log.Println("SelectFile")
 	path := fsUtil.NormalizePath("/Users/wuff/Documents/quarkgo")
 	c.responseStart()
 	c.writeString(path)
@@ -291,8 +291,8 @@ func (c *command) StatPath() {
 	c.responseEnd()
 }
 
-func (c *command) SendFileCount() {
-	log.Println("SendFileCount")
+func (c *command) GetFileCount() {
+	log.Println("GetFileCount")
 	path, err := c.readString()
 	if err != nil {
 		log.Fatalf("ERROR: Can't read string from buffer. %v", err)
@@ -310,8 +310,8 @@ func (c *command) SendFileCount() {
 	c.responseEnd()
 }
 
-func (c *command) SendFile() {
-	log.Println("SendFile")
+func (c *command) GetFile() {
+	log.Println("GetFile")
 	path, err := c.readString()
 	if err != nil {
 		log.Fatalf("ERROR: Can't read string from buffer. %v", err)
