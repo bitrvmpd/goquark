@@ -74,7 +74,7 @@ func New(ctx context.Context) (*command, error) {
 		GetFileCount:        c.SendFileCount,
 		GetFile:             c.SendFile,
 		GetDirectoryCount:   c.SendDirectoryCount,
-		GetDirectory:        func() { log.Printf("usbUtils.GetDirectory:") },
+		GetDirectory:        c.GetDirectory,
 		StartFile:           func() { log.Printf("usbUtils.StartFile:") },
 		ReadFile:            func() { log.Printf("usbUtils.ReadFile:") },
 		WriteFile:           func() { log.Printf("usbUtils.WriteFile:") },
@@ -337,5 +337,32 @@ func (c *command) SendFile() {
 
 	c.responseStart()
 	c.writeString(files[idx])
+	c.responseEnd()
+}
+
+func (c *command) GetDirectory() {
+	log.Println("GetDirectory")
+	path, err := c.readString()
+	if err != nil {
+		log.Fatalf("ERROR: Couldn't read string from buffer. %v", err)
+	}
+	path = fsUtil.DenormalizePath(path)
+
+	idx, err := c.readInt32()
+	if err != nil {
+		log.Fatalf("ERROR: Couldn't read int32 from buffer. %v", err)
+	}
+
+	dirs, err := fsUtil.GetDirectoriesIn(path)
+	if err != nil {
+		log.Fatalf("ERROR: Couldn't get directories in %v. %v", path, err)
+	}
+
+	if idx > len(dirs) || idx < 0 {
+		c.respondFailure(0xDEAD)
+	}
+
+	c.responseStart()
+	c.writeString(dirs[idx])
 	c.responseEnd()
 }
