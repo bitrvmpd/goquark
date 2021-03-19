@@ -76,7 +76,7 @@ func New(ctx context.Context) (*command, error) {
 		GetDirectoryCount:   c.GetDirectoryCount,
 		GetDirectory:        c.GetDirectory,
 		StartFile:           func() { log.Printf("usbUtils.StartFile:") },
-		ReadFile:            func() { log.Printf("usbUtils.ReadFile:") },
+		ReadFile:            c.ReadFile,
 		WriteFile:           func() { log.Printf("usbUtils.WriteFile:") },
 		EndFile:             func() { log.Printf("usbUtils.EndFile:") },
 		Create:              func() { log.Printf("usbUtils.Create:") },
@@ -365,4 +365,47 @@ func (c *command) GetDirectory() {
 	c.responseStart()
 	c.writeString(dirs[idx])
 	c.responseEnd()
+}
+
+func (c *command) ReadFile() {
+	log.Println("ReadFile")
+	path, err := c.readString()
+	if err != nil {
+		log.Fatalf("ERROR: Couldn't read string from buffer. %v", err)
+	}
+	path = fsUtil.DenormalizePath(path)
+
+	offset, err := c.readInt64()
+	if err != nil {
+		log.Fatalf("ERROR: Couldn't read int32 from buffer. %v", err)
+	}
+
+	size, err := c.readInt64()
+	if err != nil {
+		log.Fatalf("ERROR: Couldn't read int32 from buffer. %v", err)
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		log.Fatalf("ERROR: Couldn't open %v. %v", path, err)
+	}
+
+	_, err = file.Seek(offset, 1)
+	if err != nil {
+		log.Fatalf("ERROR: Couldn't seek %v to offset %v. %v", path, offset, err)
+	}
+
+	fbuffer := make([]byte, size)
+	bRead, err := file.Read(fbuffer)
+	if err != nil {
+		log.Fatalf("ERROR: Couldn't read %v. %v", path, err)
+	}
+
+	c.responseStart()
+	c.writeInt64(uint64(bRead))
+	c.responseEnd()
+
+	if _, err = c.usb.Write(fbuffer); err != nil {
+		log.Fatalf("ERROR: Couldn't write %v.", err)
+	}
 }
