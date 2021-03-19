@@ -1,97 +1,96 @@
 package cfg
 
 import (
-	"fmt"
 	"log"
 	"os"
-	"strconv"
-	"strings"
+	"path/filepath"
 
-	"github.com/fsnotify/fsnotify"
-	"github.com/spf13/viper"
+	"gopkg.in/yaml.v2"
 )
 
-const ConfigPath = "goquark"
+const ConfigPath = "goquark.yaml"
 
+type cfgRoot struct {
+	Nodes []cfgNode `yaml:"nodes"`
+}
 type cfgNode struct {
-	Index int
-	Alias string
-	Path  string
+	Alias string `yaml:"alias"`
+	Path  string `yaml:"path"`
+	index int
 }
 
+var cfg cfgRoot = cfgRoot{}
+
 func init() {
-	viper.SetConfigName(ConfigPath) // name of config file (without extension
-	viper.SetConfigType("yaml")
+	loadConfig()
+}
+
+func loadConfig() {
 	userDir, err := os.UserHomeDir()
 	if err != nil {
 		log.Printf("ERROR: %v", err)
 	}
-	viper.AddConfigPath(userDir) // optionally look for config in the working directory
 
-	// Find and read the config file
-	if err := viper.ReadInConfig(); err != nil {
-		// Handle errors reading the config file
-		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-			// Config file not found; ignore error if desired
-			viper.AllowEmptyEnv(true)
-			err = viper.SafeWriteConfig() // writes current config to predefined path set by 'viper.AddConfigPath()' and 'viper.SetConfigName'
-			if err != nil {
-				log.Fatalf("Couldn't write config file: %v \n", err)
-			}
-		} else {
-			// Config file was found but another error was produced
-			log.Fatalf("Fatal error config file: %s \n", err)
+	// Open or Create if not found.
+	f, err := os.OpenFile(filepath.Join(userDir, ConfigPath), os.O_RDWR|os.O_CREATE, 0666)
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+	}
+	defer f.Close()
 
-		}
+	decoder := yaml.NewDecoder(f)
+	err = decoder.Decode(&cfg)
+	if err != nil {
+		log.Printf("ERROR: %v", err)
 	}
 
-	viper.WatchConfig()
-	viper.OnConfigChange(func(e fsnotify.Event) {
-		fmt.Println("Config file changed:", e.Name)
-	})
+	//Fill current index
+	for i := 0; i < len(cfg.Nodes); i++ {
+		cfg.Nodes[i].index = i
+	}
+}
+
+func writeConfig() {
+	userDir, err := os.UserHomeDir()
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+	}
+
+	// Delete the file, to prevent weird bugs.
+	os.Remove(filepath.Join(userDir, ConfigPath))
+
+	// Open or Create if not found.
+	f, err := os.OpenFile(filepath.Join(userDir, ConfigPath), os.O_RDWR|os.O_CREATE, 0666)
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+	}
+	defer f.Close()
+	encoder := yaml.NewEncoder(f)
+	err = encoder.Encode(cfg)
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+	}
 }
 
 func Size() uint32 {
-	return uint32(len(viper.AllKeys()))
+	return uint32(len(cfg.Nodes))
 }
 
 func AddFolder(name string, path string) {
-	m := map[string]string{name: path}
-	s := len(viper.AllKeys())
-	viper.Set(strconv.Itoa(s), m)
-	if err := viper.WriteConfig(); err != nil {
-		log.Fatalf("ERROR: %v", err)
-	}
+	cfg.Nodes = append(cfg.Nodes, cfgNode{name, path, len(cfg.Nodes)})
+	writeConfig()
 }
 
 func RemoveFolder(idx int) {
-	if !viper.IsSet(strconv.Itoa(idx)) {
-		log.Println("value is not here..")
+	// Not as efficient, but it works.
+	cfg.Nodes = append(cfg.Nodes[:idx], cfg.Nodes[idx+1:]...)
+	// Update index
+	for i := 0; i < len(cfg.Nodes); i++ {
+		cfg.Nodes[i].index = i
 	}
-	viper.Set(strconv.Itoa(idx), nil)
-	if err := viper.WriteConfig(); err != nil {
-		log.Fatalf("ERROR: %v", err)
-	}
+	writeConfig()
 }
 
-// Returns an array of maps.
-// It'll always be ordered.
 func ListFolders() []cfgNode {
-	vKeys := viper.AllKeys()
-	folders := make([]cfgNode, len(vKeys))
-
-	for _, key := range vKeys {
-		comK := strings.Split(key, ".")
-		v, err := strconv.Atoi(comK[0])
-		if err != nil {
-			log.Printf("ERROR: %v", err)
-		}
-		folders[v] = cfgNode{
-			Index: v,
-			Alias: comK[1],
-			Path:  viper.GetString(key),
-		}
-	}
-
-	return folders
+	return cfg.Nodes
 }

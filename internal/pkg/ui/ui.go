@@ -12,7 +12,7 @@ import (
 	"github.com/sqweek/dialog"
 )
 
-var folders map[string]*systray.MenuItem
+var folders map[int]*systray.MenuItem
 var ctx context.Context
 var cancel context.CancelFunc
 
@@ -23,46 +23,47 @@ func Build() {
 }
 
 func onReady() {
-	folders = make(map[string]*systray.MenuItem, cfg.Size())
+	folders = make(map[int]*systray.MenuItem, cfg.Size())
 	started := false
 	//systray.SetIcon(icon.Data)
 	systray.SetTitle("goQuark")
 	systray.SetTooltip("")
 	mStart := systray.AddMenuItem("Start", "Starts communication")
+	mStatus := systray.AddMenuItem("Client Stopped", "Show client status")
+	mStatus.Disable()
+	systray.AddSeparator()
 
-	//Reads folders, add tickers to disable them or deleting
-	mPaths := systray.AddMenuItem("Folders", "Enable/Disable exposed folders")
-
-	// Reads configuration, sets routes
-	for _, folder := range cfg.ListFolders() {
-		folders[folder.Alias] = mPaths.AddSubMenuItemCheckbox(folder.Alias, folder.Path, true)
-	}
 	// Sets the icon of a menu item. Only available on Mac and Windows.
 	systray.AddSeparator()
 	mPath := systray.AddMenuItem("Add Folder...", "Exposes a new folder to Goldleaf")
+
+	//Reads folders, add tickers to disable them or deleting
+	mPaths := systray.AddMenuItem("Remove Folder", "Click to remove an exposed folder")
+
+	// Reads configuration, sets routes
+	for i, folder := range cfg.ListFolders() {
+		folders[i] = mPaths.AddSubMenuItem(folder.Alias, folder.Path)
+	}
+
 	systray.AddSeparator()
 	mQuit := systray.AddMenuItem("Quit", "Quit the whole app")
 
 	//Listen for submenu items
 	for c, f := range folders {
-		go func(folder string, mi *systray.MenuItem) {
+		go func(fIndex int, mi *systray.MenuItem) {
 			for {
 				select {
 				case <-ctx.Done():
-					fmt.Printf("Closing submenu threads: %v\n", folder)
+					fmt.Printf("Closing submenu threads: %v\n", fIndex)
 					return
 				case <-mi.ClickedCh:
-					fmt.Printf("Clicked %v\n", folder)
-					if mi.Checked() {
-						mi.Uncheck()
-					} else {
-						mi.Check()
-					}
+					cfg.RemoveFolder(fIndex)
+					// systray doesn't have a way to remove an item. Hiding is ok for now.
+					mi.Hide()
 				}
 			}
 		}(c, f)
 	}
-
 	// Set button actions
 	for {
 		select {
@@ -75,6 +76,8 @@ func onReady() {
 				cancel()
 				started = false
 				mStart.SetTitle("Start")
+				mStatus.SetTitle("Client Stopped")
+				mPaths.Enable()
 				continue
 			}
 
@@ -83,6 +86,8 @@ func onReady() {
 			go quark.Listen(ctx)
 			started = true
 			mStart.SetTitle("Stop")
+			mStatus.SetTitle("Ready for connection")
+			mPaths.Disable()
 
 		case <-mPath.ClickedCh:
 			f, err := dialog.Directory().Browse()
@@ -94,7 +99,7 @@ func onReady() {
 			if f == "" {
 				continue
 			}
-
+			mPaths.AddSubMenuItem(path.Base(f), f)
 			cfg.AddFolder(path.Base(f), f)
 		}
 	}
