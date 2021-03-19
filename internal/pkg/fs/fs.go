@@ -54,7 +54,7 @@ func GetFilesIn(path string) ([]string, error) {
 		if file.IsDir() {
 			continue
 		}
-		files = append(files, filepath.Join(path, file.Name()))
+		files = append(files, file.Name())
 	}
 
 	return files, nil
