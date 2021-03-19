@@ -48,13 +48,14 @@ func (c *buffer) respondFailure(r uint32) {
 	// Empty our out buffer
 	c.resp_block = make([]byte, 0, BlockSize)
 
-	// Append magic
-	d := make([]byte, 0, 4)
+	//Fast convertion to uint32
+	d := make([]byte, 4)
 	binary.LittleEndian.PutUint32(d, GLCO)
+
 	c.resp_block = append(c.resp_block, d...)
 
 	// Append error
-	b := make([]byte, 0, 4)
+	b := make([]byte, 4)
 	binary.LittleEndian.PutUint32(b, r)
 	c.resp_block = append(c.resp_block, b...)
 
