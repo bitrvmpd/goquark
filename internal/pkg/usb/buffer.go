@@ -78,6 +78,16 @@ func (c *buffer) readInt32() (int, error) {
 	return int(i), nil
 }
 
+func (c *buffer) readInt64() (int64, error) {
+	d := make([]byte, 8)
+	_, err := c.in_buff.Read(d)
+	if err != nil {
+		log.Fatalf("ERROR: Couldn't read from buffer!. %v", err)
+	}
+	i := binary.LittleEndian.Uint64(d)
+	return int64(i), nil
+}
+
 func (c *buffer) readFromUSB() {
 	c.in_buff.Reset()
 	b := make([]byte, BlockSize)
