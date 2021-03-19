@@ -267,7 +267,9 @@ func (c *command) StatPath() {
 	path = fsUtil.DenormalizePath(path)
 	fi, err := os.Stat(path)
 	if err != nil {
-		log.Fatalf("ERROR: Couldn't get %v stats. %v", path, err)
+		log.Printf("ERROR: Couldn't get %v stats. %v", path, err)
+		c.respondFailure(0xDEAD)
+		return
 	}
 
 	ftype := 0
