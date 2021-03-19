@@ -76,7 +76,7 @@ func New(ctx context.Context) (*command, error) {
 		GetDriveInfo:        c.SendDriveInfo,
 		StatPath:            c.StatPath,
 		GetFileCount:        c.SendFileCount,
-		GetFile:             func() { log.Printf("usbUtils.GetFile:") },
+		GetFile:             c.SendFile,
 		GetDirectoryCount:   c.SendDirectoryCount,
 		GetDirectory:        func() { log.Printf("usbUtils.GetDirectory:") },
 		StartFile:           func() { log.Printf("usbUtils.StartFile:") },
@@ -311,5 +311,33 @@ func (c *command) SendFileCount() {
 
 	c.responseStart()
 	c.writeInt32(uint32(len(nFiles)))
+	c.responseEnd()
+}
+
+func (c *command) SendFile() {
+	log.Println("SendFile")
+	path, err := c.readString()
+
+	// idx comes after the path
+	idx := binary.LittleEndian.Uint32(c.inner_block[12+(len(path)*2) : 12+4+(len(path)*2)])
+
+	if err != nil {
+		log.Fatalf("ERROR: Can't read string from buffer. %v", err)
+		return
+	}
+	path = fsUtil.DenormalizePath(path)
+	files, err := fsUtil.GetFilesIn(path)
+	if err != nil {
+		log.Fatalf("ERROR: Can't get files in %v. %v", path, err)
+		return
+	}
+
+	if idx >= uint32(len(files)) || idx < uint32(0) {
+		c.respondFailure(0xDEAD)
+		return
+	}
+
+	c.responseStart()
+	c.writeString(files[idx])
 	c.responseEnd()
 }
