@@ -471,6 +471,7 @@ func (c *command) Delete() {
 	c.respondEmpty()
 }
 
+// TODO: Follow "The happy path is left-aligned"
 func (c *command) Create() {
 	// 1 = file, 2 = dir
 	fType, err := c.readInt32()
@@ -508,6 +509,7 @@ func (c *command) Create() {
 	c.respondEmpty()
 }
 
+// TODO: Follow "The happy path is left-aligned"
 func (c *command) EndFile() {
 	fMode, err := c.readInt32()
 	if err != nil {
@@ -528,6 +530,7 @@ func (c *command) EndFile() {
 	c.respondEmpty()
 }
 
+// TODO: Follow "The happy path is left-aligned"
 func (c *command) StartFile() {
 	path, err := c.readString()
 	if err != nil {
