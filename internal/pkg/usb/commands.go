@@ -80,7 +80,7 @@ func New(ctx context.Context) (*command, error) {
 		GetFile:             c.GetFile,
 		GetDirectoryCount:   c.GetDirectoryCount,
 		GetDirectory:        c.GetDirectory,
-		StartFile:           func() { log.Printf("usbUtils.StartFile:") },
+		StartFile:           c.StartFile,
 		ReadFile:            c.ReadFile,
 		WriteFile:           func() { log.Printf("usbUtils.WriteFile:") },
 		EndFile:             c.EndFile,
@@ -525,5 +525,51 @@ func (c *command) EndFile() {
 			fileWriter = nil
 		}
 	}
+	c.respondEmpty()
+}
+
+func (c *command) StartFile() {
+	path, err := c.readString()
+	if err != nil {
+		log.Fatalf("ERROR: Couldn't read string from buffer. %v", err)
+	}
+	path = fsUtil.DenormalizePath(path)
+
+	fMode, err := c.readInt32()
+	if err != nil {
+		log.Fatalf("ERROR: Couldn't read int32 from buffer. %v", err)
+	}
+
+	if fMode == 1 {
+		if fileReader != nil {
+			fileReader.Close()
+		}
+		// Open Read Only
+		fileReader, err = os.Open(path)
+		if err != nil {
+			log.Fatalf("ERROR: Couldn't open %v. %v", path, err)
+		}
+	} else {
+		if fileWriter != nil {
+			fileWriter.Close()
+		}
+		//Open Read and Write
+		fileWriter, err = os.Create(path)
+		if err != nil {
+			log.Fatalf("ERROR: Couldn't write %v. %v", path, err)
+		}
+
+		if fMode == 3 {
+			fInfo, err := fileWriter.Stat()
+			if err != nil {
+				log.Fatalf("ERROR: Couldn't get stats for %v. %v", path, err)
+			}
+			_, err = fileWriter.Seek(fInfo.Size(), 1)
+			if err != nil {
+				log.Fatalf("ERROR: Couldn't get stats for %v. %v", path, err)
+			}
+		}
+	}
+
 	c.respondEmpty()
 }
