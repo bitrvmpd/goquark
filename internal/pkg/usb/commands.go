@@ -407,7 +407,7 @@ func (c *command) ReadFile() {
 		}
 	}
 
-	_, err = file.Seek(offset, 1)
+	_, err = file.Seek(offset, 0)
 	if err != nil {
 		log.Fatalf("ERROR: Couldn't seek %v to offset %v. %v", path, offset, err)
 	}
@@ -577,7 +577,7 @@ func (c *command) StartFile() {
 			if err != nil {
 				log.Fatalf("ERROR: Couldn't get stats for %v. %v", path, err)
 			}
-			_, err = fileWriter.Seek(fInfo.Size(), 1)
+			_, err = fileWriter.Seek(fInfo.Size(), 0)
 			if err != nil {
 				log.Fatalf("ERROR: Couldn't get stats for %v. %v", path, err)
 			}
