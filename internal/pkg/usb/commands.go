@@ -3,6 +3,7 @@ package usb
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"log"
 	"os"
 
@@ -82,7 +83,7 @@ func New(ctx context.Context) (*command, error) {
 		GetDirectory:        c.GetDirectory,
 		StartFile:           c.StartFile,
 		ReadFile:            c.ReadFile,
-		WriteFile:           func() { log.Printf("usbUtils.WriteFile:") },
+		WriteFile:           c.WriteFile,
 		EndFile:             c.EndFile,
 		Create:              c.Create,
 		Delete:              c.Delete,
@@ -574,5 +575,43 @@ func (c *command) StartFile() {
 		}
 	}
 
+	c.respondEmpty()
+}
+
+// TODO: Follow "The happy path is left-aligned"
+func (c *command) WriteFile() {
+	path, err := c.readString()
+	if err != nil {
+		log.Fatalf("ERROR: Couldn't read string from buffer. %v", err)
+	}
+	path = fsUtil.DenormalizePath(path)
+
+	bLenght, err := c.readInt64()
+	if err != nil {
+		log.Fatalf("ERROR: Couldn't read int32 from buffer. %v", err)
+	}
+
+	buffer := make([]byte, bLenght)
+	_, err = c.usb.Read(buffer)
+	if err != nil {
+		log.Fatalf("ERROR: Couldn't read directly from buffer. %v", err)
+	}
+
+	if fileWriter != nil {
+		_, err := fileWriter.Write(buffer)
+		if err != nil {
+			log.Fatalf("ERROR: Couldn't write %v to disk. %v", path, err)
+			c.respondFailure(0xDEAD)
+			return
+		}
+		c.respondEmpty()
+		return
+	}
+
+	err = os.WriteFile(path, buffer, fs.ModeAppend)
+	if err != nil {
+		c.respondFailure(0xDEAD)
+		return
+	}
 	c.respondEmpty()
 }
