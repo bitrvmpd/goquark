@@ -17,10 +17,25 @@ const (
 )
 
 type USBInterface struct {
-	ctx context.Context
+	ctx  context.Context
+	gCtx *gousb.Context
+	gDev *gousb.Device
+}
+
+func initDevice(ctx context.Context) *USBInterface {
+	return &USBInterface{
+		ctx: ctx,
+	}
+}
+
+func (u *USBInterface) Close() {
+	u.gDev.Close()
+	u.gCtx.Close()
+	log.Println("Closing gDev and gCtx")
 }
 
 // Waits for a device to be connected that matches VID: 0x057E PID: 0x3000
+// Stores context and device for reuse.
 func (u *USBInterface) isConnected() chan bool {
 	// Set ticker to search for the required device
 	ticker := time.NewTicker(500 * time.Millisecond)
@@ -31,11 +46,11 @@ func (u *USBInterface) isConnected() chan bool {
 
 		// Initialize a new Context.
 		gctx := gousb.NewContext()
-		defer gctx.Close()
 
 		for range ticker.C {
 			select {
 			case <-u.ctx.Done():
+				gctx.Close()
 				c <- false
 				return
 			case <-ticker.C:
@@ -43,8 +58,9 @@ func (u *USBInterface) isConnected() chan bool {
 				// If none is found, it returns nil and nil error
 				dev, _ := gctx.OpenDeviceWithVIDPID(VendorID, ProductID)
 				if dev != nil {
-					// Device found, exit loop.
-					dev.Close()
+					// Device found, exit loop. don't close it!
+					u.gCtx = gctx
+					u.gDev = dev
 					c <- true
 					return
 				}
@@ -55,19 +71,7 @@ func (u *USBInterface) isConnected() chan bool {
 }
 
 func (u *USBInterface) getDescription() (string, error) {
-	// Initialize a new Context.
-	ctx := gousb.NewContext()
-	defer ctx.Close()
-	// Open any device with a given VID/PID using a convenience function.
-	// If none is found, it returns nil and nil error
-	dev, err := ctx.OpenDeviceWithVIDPID(VendorID, ProductID)
-	if dev == nil && err == nil {
-		return "", fmt.Errorf("Coulnd't find specified device VID: %v, PID: %v", VendorID, ProductID)
-	}
-
-	defer dev.Close()
-
-	s, err := dev.Product()
+	s, err := u.gDev.Product()
 	if err != nil {
 		return "", err
 	}
@@ -75,18 +79,7 @@ func (u *USBInterface) getDescription() (string, error) {
 }
 
 func (u *USBInterface) getSerialNumber() (string, error) {
-	// Initialize a new Context.
-	ctx := gousb.NewContext()
-	defer ctx.Close()
-
-	// Open any device with a given VID/PID using a convenience function.
-	dev, err := ctx.OpenDeviceWithVIDPID(VendorID, ProductID)
-	if err != nil {
-		return "", err
-	}
-	defer dev.Close()
-
-	s, err := dev.SerialNumber()
+	s, err := u.gDev.SerialNumber()
 	if err != nil {
 		return "", err
 	}
@@ -94,24 +87,15 @@ func (u *USBInterface) getSerialNumber() (string, error) {
 }
 
 func (u *USBInterface) Read(p []byte) (int, error) {
-
-	// Initialize a new Context.
-	ctx := gousb.NewContext()
-	defer ctx.Close()
-
-	// Open any device with a given VID/PID using a convenience function.
-	dev, err := ctx.OpenDeviceWithVIDPID(VendorID, ProductID)
-	if err != nil {
-		log.Fatalf("Could not open a device: %v", err)
-	}
-	defer dev.Close()
+	//Test donde channel for each request.
+	chDone := make(chan interface{})
 
 	// Claim the default interface using a convenience function.
 	// The default interface is always #0 alt #0 in the currently active
 	// config.
-	intf, done, err := dev.DefaultInterface()
+	intf, done, err := u.gDev.DefaultInterface()
 	if err != nil {
-		log.Fatalf("%s.DefaultInterface(): %v", dev, err)
+		log.Fatalf("%s.DefaultInterface(): %v", u.gDev, err)
 	}
 	defer done()
 
@@ -129,11 +113,16 @@ func (u *USBInterface) Read(p []byte) (int, error) {
 
 	// Just before reading, prepare a way to cancel this request
 	go func() {
-		for range u.ctx.Done() {
-			done()
-			dev.Close()
-			ctx.Close()
-			return
+		for {
+			select {
+			case <-u.ctx.Done():
+				done()
+				u.Close()
+				return
+			case <-chDone:
+				// Successful read, close this goroutine
+				return
+			}
 		}
 	}()
 	// Read data from the USB device.
@@ -146,27 +135,21 @@ func (u *USBInterface) Read(p []byte) (int, error) {
 		log.Fatalf("%s.Read([%v]): only %d bytes read, returned error is %v", ep, numBytes, numBytes, err)
 	}
 
+	// Notify that we are done!
+	chDone <- struct{}{}
 	return numBytes, nil
 }
 
 func (u *USBInterface) Write(p []byte) (int, error) {
-	// Initialize a new Context.
-	ctx := gousb.NewContext()
-	defer ctx.Close()
-
-	// Open any device with a given VID/PID using a convenience function.
-	dev, err := ctx.OpenDeviceWithVIDPID(VendorID, ProductID)
-	if err != nil {
-		log.Fatalf("Could not open a device: %v", err)
-	}
-	defer dev.Close()
+	//Test donde channel for each request.
+	chDone := make(chan interface{})
 
 	// Claim the default interface using a convenience function.
 	// The default interface is always #0 alt #0 in the currently active
 	// config.
-	intf, done, err := dev.DefaultInterface()
+	intf, done, err := u.gDev.DefaultInterface()
 	if err != nil {
-		log.Fatalf("%s.DefaultInterface(): %v", dev, err)
+		log.Fatalf("%s.DefaultInterface(): %v", u.gDev, err)
 	}
 	defer done()
 
@@ -184,11 +167,16 @@ func (u *USBInterface) Write(p []byte) (int, error) {
 
 	// Just before writting, prepare a way to cancel this request
 	go func() {
-		for range u.ctx.Done() {
-			done()
-			dev.Close()
-			ctx.Close()
-			return
+		for {
+			select {
+			case <-u.ctx.Done():
+				done()
+				u.Close()
+				return
+			case <-chDone:
+				// Successful read, close this goroutine
+				return
+			}
 		}
 	}()
 	// Write data to the USB device.
@@ -197,5 +185,7 @@ func (u *USBInterface) Write(p []byte) (int, error) {
 		log.Fatalf("%s.Write([%v]): only %d bytes written, returned error is %v", ep, numBytes, numBytes, err)
 	}
 
+	// Notify that we are done!
+	chDone <- struct{}{}
 	return numBytes, nil
 }
