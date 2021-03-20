@@ -375,6 +375,7 @@ func (c *command) GetDirectory() {
 	c.responseEnd()
 }
 
+// TODO: Follow "The happy path is left-aligned"
 func (c *command) ReadFile() {
 	log.Println("ReadFile")
 	path, err := c.readString()
@@ -393,9 +394,17 @@ func (c *command) ReadFile() {
 		log.Fatalf("ERROR: Couldn't read int32 from buffer. %v", err)
 	}
 
-	file, err := os.Open(path)
-	if err != nil {
-		log.Fatalf("ERROR: Couldn't open %v. %v", path, err)
+	var file *os.File
+
+	if fileReader != nil {
+		// Use the already opened fileReader
+		file = fileReader
+	} else {
+		// Or Don't use it for some reason..
+		file, err = os.Open(path)
+		if err != nil {
+			log.Fatalf("ERROR: Couldn't open %v. %v", path, err)
+		}
 	}
 
 	_, err = file.Seek(offset, 1)
