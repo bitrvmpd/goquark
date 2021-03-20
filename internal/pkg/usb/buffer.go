@@ -88,14 +88,15 @@ func (c *buffer) readInt64() (int64, error) {
 	return int64(i), nil
 }
 
-func (c *buffer) readFromUSB() {
+func (c *buffer) readFromUSB() error {
 	c.in_buff.Reset()
 	b := make([]byte, BlockSize)
 	_, err := c.usb.Read(b)
 	if err != nil {
-		log.Fatalf("ERROR: Couldn't read from usb!. %v", err)
+		return err
 	}
 	c.in_buff.Write(b)
+	return nil
 }
 
 func (c *buffer) writeInt32(n uint32) {
