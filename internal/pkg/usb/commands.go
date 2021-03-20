@@ -12,6 +12,11 @@ import (
 
 type ID uint8
 
+var (
+	fileReader *os.File
+	fileWriter *os.File
+)
+
 const (
 	BlockSize = 4096
 	GLCI      = 1229147207
@@ -78,7 +83,7 @@ func New(ctx context.Context) (*command, error) {
 		StartFile:           func() { log.Printf("usbUtils.StartFile:") },
 		ReadFile:            c.ReadFile,
 		WriteFile:           func() { log.Printf("usbUtils.WriteFile:") },
-		EndFile:             func() { log.Printf("usbUtils.EndFile:") },
+		EndFile:             c.EndFile,
 		Create:              c.Create,
 		Delete:              c.Delete,
 		Rename:              c.Rename,
@@ -500,5 +505,25 @@ func (c *command) Create() {
 		}
 	}
 
+	c.respondEmpty()
+}
+
+func (c *command) EndFile() {
+	fMode, err := c.readInt32()
+	if err != nil {
+		log.Fatalf("ERROR: Couldn't read int32 from buffer. %v", err)
+	}
+
+	if fMode == 1 {
+		if fileReader != nil {
+			fileReader.Close()
+			fileReader = nil
+		}
+	} else {
+		if fileWriter != nil {
+			fileWriter.Close()
+			fileWriter = nil
+		}
+	}
 	c.respondEmpty()
 }
