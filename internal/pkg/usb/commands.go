@@ -66,9 +66,7 @@ type command struct {
 func New(ctx context.Context) (*command, error) {
 	c := command{
 		buffer: &buffer{
-			usb: &USBInterface{
-				ctx: ctx,
-			},
+			usb: initDevice(ctx),
 		}}
 
 	// Map cmd ID to respective function
@@ -98,53 +96,64 @@ func New(ctx context.Context) (*command, error) {
 
 func (c *command) ProcessUSBPackets() {
 
-	// Check if device is connected.
-	b := c.usb.isConnected()
-
-	// Waits for device to appear
-	// If false, returns.
-	if !<-b {
-		return
-	}
-
-	//quarkVersion := "0.4.0"
-	//minGoldleafVersion := "0.8.0"
-
-	// Reads goldleaf description
-	d, err := c.retrieveDesc()
-	if err != nil {
-		log.Fatalf("ERROR: %v", err)
-	}
-
-	// Reads goldleaf's version number
-	s, err := c.retrieveSerialNumber()
-	if err != nil {
-		log.Fatalf("ERROR: %v", err)
-	}
-
-	fmt.Printf(header, d, s)
-
+	// Loop waiting for device, improve by using recover someway
 	for {
-		c.readFromUSB()
+		// Check if device is connected.
+		b := c.usb.isConnected()
 
-		// Magic [:4]
-		i, err := c.readInt32()
+		// Waits for device to appear
+		// If false, returns.
+		if !<-b {
+			return
+		}
+
+		//quarkVersion := "0.4.0"
+		//minGoldleafVersion := "0.8.0"
+
+		// Reads goldleaf description
+		d, err := c.retrieveDesc()
 		if err != nil {
 			log.Fatalf("ERROR: %v", err)
 		}
 
-		if i != GLCI {
-			log.Fatalf("ERROR: Invalid magic GLCI, got %v", i)
-		}
-
-		// CMD [4:]
-		cmd, err := c.readInt32()
+		// Reads goldleaf's version number
+		s, err := c.retrieveSerialNumber()
 		if err != nil {
-			log.Fatalln(err)
+			log.Fatalf("ERROR: %v", err)
 		}
 
-		// Invoke requested function
-		c.cmdMap[ID(cmd)]()
+		fmt.Printf(header, d, s)
+
+		// Loop for reading usb
+		for {
+			if err := c.readFromUSB(); err != nil {
+				//When usb is disconnected don't panic.
+				// I need to tell the program to wait for a device again.
+				log.Printf("INFO: There was an error reading from USB. %v", err)
+				log.Println("Exiting loop...")
+				c.usb.Close()
+				break
+			}
+
+			// Magic [:4]
+			i, err := c.readInt32()
+			if err != nil {
+				log.Fatalf("ERROR: %v", err)
+			}
+
+			if i != GLCI {
+				log.Fatalf("ERROR: Invalid magic GLCI, got %v", i)
+			}
+
+			// CMD [4:]
+			cmd, err := c.readInt32()
+			if err != nil {
+				log.Fatalln(err)
+			}
+
+			// Invoke requested function
+			c.cmdMap[ID(cmd)]()
+		}
 	}
 }
 
