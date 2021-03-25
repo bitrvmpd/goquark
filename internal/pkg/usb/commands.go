@@ -3,7 +3,6 @@ package usb
 import (
 	"context"
 	"fmt"
-	"io/fs"
 	"log"
 	"os"
 
@@ -19,9 +18,9 @@ var (
 )
 
 const (
-	BlockSize = 4096
-	GLCI      = 1229147207
-	GLCO      = 1329810503
+	BlockSize = 0x1000
+	GLCI      = 0x49434C47
+	GLCO      = 0x4F434C47
 	header    = `
 	####################################
 	###### < < G O  Q U A R K > > ######
@@ -72,23 +71,23 @@ func New(ctx context.Context) (*command, error) {
 	// Map cmd ID to respective function
 	c.cmdMap = map[ID]func(){
 		Invalid:             func() { log.Printf("usbUtils.Invalid:") },
-		GetDriveCount:       c.GetDriveCount,
-		GetDriveInfo:        c.GetDriveInfo,
-		StatPath:            c.StatPath,
-		GetFileCount:        c.GetFileCount,
-		GetFile:             c.GetFile,
-		GetDirectoryCount:   c.GetDirectoryCount,
-		GetDirectory:        c.GetDirectory,
-		StartFile:           c.StartFile,
-		ReadFile:            c.ReadFile,
-		WriteFile:           c.WriteFile,
-		EndFile:             c.EndFile,
-		Create:              c.Create,
-		Delete:              c.Delete,
-		Rename:              c.Rename,
-		GetSpecialPathCount: c.GetSpecialPathCount,
-		GetSpecialPath:      c.GetSpecialPath,
-		SelectFile:          c.SelectFile,
+		GetDriveCount:       c.getDriveCount,
+		GetDriveInfo:        c.getDriveInfo,
+		StatPath:            c.statPath,
+		GetFileCount:        c.getFileCount,
+		GetFile:             c.getFile,
+		GetDirectoryCount:   c.getDirectoryCount,
+		GetDirectory:        c.getDirectory,
+		StartFile:           c.startFile,
+		ReadFile:            c.readFile,
+		WriteFile:           c.writeFile,
+		EndFile:             c.endFile,
+		Create:              c.create,
+		Delete:              c.delete,
+		Rename:              c.rename,
+		GetSpecialPathCount: c.getSpecialPathCount,
+		GetSpecialPath:      c.getSpecialPath,
+		SelectFile:          c.selectFile,
 	}
 
 	return &c, nil
@@ -127,9 +126,9 @@ func (c *command) ProcessUSBPackets() {
 		// Loop for reading usb
 		for {
 			if err := c.readFromUSB(); err != nil {
-				//When usb is disconnected don't panic.
+				// When usb is disconnected don't panic.
 				// I need to tell the program to wait for a device again.
-				log.Printf("INFO: There was an error reading from USB. %v", err)
+				log.Printf("INFO: Lost connection to device. %v", err)
 				log.Println("Exiting loop...")
 				c.usb.Close()
 				break
@@ -173,7 +172,7 @@ func (c *command) retrieveSerialNumber() (string, error) {
 	return s, nil
 }
 
-func (c *command) GetDriveCount() {
+func (c *command) getDriveCount() {
 	log.Println("GetDriveCount")
 	drives, err := fsUtil.ListDrives()
 	if err != nil {
@@ -185,7 +184,7 @@ func (c *command) GetDriveCount() {
 	c.responseEnd()
 }
 
-func (c *command) GetDriveInfo() {
+func (c *command) getDriveInfo() {
 	log.Println("GetDriveInfo")
 	drives, err := fsUtil.ListDrives()
 	if err != nil {
@@ -217,7 +216,7 @@ func (c *command) GetDriveInfo() {
 	c.responseEnd()
 }
 
-func (c *command) GetSpecialPath() {
+func (c *command) getSpecialPath() {
 	log.Println("GetSpecialPath")
 
 	// Read payload
@@ -240,14 +239,14 @@ func (c *command) GetSpecialPath() {
 	c.responseEnd()
 }
 
-func (c *command) GetSpecialPathCount() {
+func (c *command) getSpecialPathCount() {
 	log.Println("GetSpecialPathCount")
 	c.responseStart()
 	c.writeInt32(cfg.Size())
 	c.responseEnd()
 }
 
-func (c *command) GetDirectoryCount() {
+func (c *command) getDirectoryCount() {
 	log.Println("GetDirectoryCount")
 	s, err := c.readString()
 	if err != nil {
@@ -263,7 +262,7 @@ func (c *command) GetDirectoryCount() {
 	c.responseEnd()
 }
 
-func (c *command) SelectFile() {
+func (c *command) selectFile() {
 	log.Println("SelectFile")
 	path := fsUtil.NormalizePath("/Users/wuff/Documents/quarkgo")
 	c.responseStart()
@@ -271,7 +270,7 @@ func (c *command) SelectFile() {
 	c.responseEnd()
 }
 
-func (c *command) StatPath() {
+func (c *command) statPath() {
 	log.Println("StatPath")
 	path, err := c.readString()
 	if err != nil {
@@ -308,7 +307,7 @@ func (c *command) StatPath() {
 	c.responseEnd()
 }
 
-func (c *command) GetFileCount() {
+func (c *command) getFileCount() {
 	log.Println("GetFileCount")
 	path, err := c.readString()
 	if err != nil {
@@ -327,7 +326,7 @@ func (c *command) GetFileCount() {
 	c.responseEnd()
 }
 
-func (c *command) GetFile() {
+func (c *command) getFile() {
 	log.Println("GetFile")
 	path, err := c.readString()
 	if err != nil {
@@ -357,7 +356,7 @@ func (c *command) GetFile() {
 	c.responseEnd()
 }
 
-func (c *command) GetDirectory() {
+func (c *command) getDirectory() {
 	log.Println("GetDirectory")
 	path, err := c.readString()
 	if err != nil {
@@ -385,7 +384,7 @@ func (c *command) GetDirectory() {
 }
 
 // TODO: Follow "The happy path is left-aligned"
-func (c *command) ReadFile() {
+func (c *command) readFile() {
 	log.Println("ReadFile")
 	path, err := c.readString()
 	if err != nil {
@@ -436,7 +435,7 @@ func (c *command) ReadFile() {
 	}
 }
 
-func (c *command) Rename() {
+func (c *command) rename() {
 	fType, err := c.readInt32()
 	if err != nil {
 		log.Fatalf("ERROR: Couldn't read int32 from buffer. %v", err)
@@ -466,7 +465,7 @@ func (c *command) Rename() {
 	c.respondEmpty()
 }
 
-func (c *command) Delete() {
+func (c *command) delete() {
 	fType, err := c.readInt32()
 	if err != nil {
 		log.Fatalf("ERROR: Couldn't read int32 from buffer. %v", err)
@@ -491,7 +490,7 @@ func (c *command) Delete() {
 }
 
 // TODO: Follow "The happy path is left-aligned"
-func (c *command) Create() {
+func (c *command) create() {
 	// 1 = file, 2 = dir
 	fType, err := c.readInt32()
 	if err != nil {
@@ -529,7 +528,7 @@ func (c *command) Create() {
 }
 
 // TODO: Follow "The happy path is left-aligned"
-func (c *command) EndFile() {
+func (c *command) endFile() {
 	fMode, err := c.readInt32()
 	if err != nil {
 		log.Fatalf("ERROR: Couldn't read int32 from buffer. %v", err)
@@ -550,7 +549,7 @@ func (c *command) EndFile() {
 }
 
 // TODO: Follow "The happy path is left-aligned"
-func (c *command) StartFile() {
+func (c *command) startFile() {
 	path, err := c.readString()
 	if err != nil {
 		log.Fatalf("ERROR: Couldn't read string from buffer. %v", err)
@@ -597,7 +596,7 @@ func (c *command) StartFile() {
 }
 
 // TODO: Follow "The happy path is left-aligned"
-func (c *command) WriteFile() {
+func (c *command) writeFile() {
 	path, err := c.readString()
 	if err != nil {
 		log.Fatalf("ERROR: Couldn't read string from buffer. %v", err)
@@ -625,8 +624,7 @@ func (c *command) WriteFile() {
 		c.respondEmpty()
 		return
 	}
-
-	err = os.WriteFile(path, buffer, fs.ModeAppend)
+	err = os.WriteFile(path, buffer, os.ModeAppend)
 	if err != nil {
 		c.respondFailure(0xDEAD)
 		return
