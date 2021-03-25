@@ -5,7 +5,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Install Deps
-      run: sudo apt install -y libusb-1.0- libgtk-3-dev libappindicator3-dev
+      run: sudo apt install -y libusb-1.0-0 libgtk-3-dev libappindicator3-dev
 
   setup-macos:
     runs-on: macos-latest
