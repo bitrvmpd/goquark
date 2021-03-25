@@ -4,11 +4,14 @@ jobs:
   setup-linux:
     runs-on: ubuntu-latest
     steps:
-      - sudo apt install -y libusb-1.0- libgtk-3-dev libappindicator3-dev
+    - name: Install Deps
+      run: sudo apt install -y libusb-1.0- libgtk-3-dev libappindicator3-dev
+
   setup-macos:
     runs-on: macos-latest
     steps:
-      - brew install libusb
+    - name: Install Deps
+      run: brew install libusb
 
   test:
     needs: [setup-linux,setup-macos]
